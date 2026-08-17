@@ -32,6 +32,11 @@ export async function GET(): Promise<NextResponse> {
 
     if (varErr) throw varErr;
 
+    const { data: rawMedia } = await supabase
+      .from('product_media')
+      .select('*')
+      .order('sort_order', { ascending: true });
+
     const products = (rawProducts || []).map((row) => {
       const p = mapRowToProduct(row);
       const matchingVariants = (rawVariants || [])
@@ -56,6 +61,19 @@ export async function GET(): Promise<NextResponse> {
           return resolvedV;
         });
 
+      const matchingMedia = (rawMedia || [])
+        .filter((m) => m.product_id === p.id)
+        .map((m) => ({
+          id: m.id,
+          productId: m.product_id,
+          variantId: m.variant_id || undefined,
+          url: m.url,
+          altText: m.alt_text || '',
+          mediaType: m.type === 'front' ? 'image_front' : m.type === 'side' ? 'image_side' : 'image_lifestyle',
+          isPrimary: m.is_primary || false,
+          sortOrder: m.sort_order || 0,
+        }));
+
       const defaultVariant = matchingVariants[0] || {
         id: `default-${p.id}`,
         productId: p.id,
@@ -74,7 +92,7 @@ export async function GET(): Promise<NextResponse> {
         effectiveWeight: p.defaultWeight,
         effectiveSpecifications: p.defaultSpecifications,
         effectiveDescription: p.description,
-        media: [],
+        media: matchingMedia as any,
         hasPriceOverride: false,
         hasSpecOverride: false,
         createdAt: p.createdAt,
@@ -85,7 +103,7 @@ export async function GET(): Promise<NextResponse> {
         ...p,
         variants: matchingVariants,
         defaultVariant,
-        media: [],
+        media: matchingMedia as any,
       };
       return resolved;
     });
@@ -119,10 +137,25 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     const productRow = mapProductToRow(body.product);
-    const { data, error } = await supabase.from('products').insert(productRow).select().single();
+    const { data: createdProduct, error } = await supabase.from('products').insert(productRow).select().single();
     if (error) throw error;
 
-    return NextResponse.json({ success: true, product: mapRowToProduct(data) }, { status: 201 });
+    // Handle media if provided
+    if (Array.isArray(body.product.media) && body.product.media.length > 0) {
+      const mediaRows = body.product.media.map((m: any, idx: number) => ({
+        id: `med-${createdProduct.id}-${idx}-${Date.now().toString().slice(-3)}`,
+        product_id: createdProduct.id,
+        type: m.mediaType?.replace('image_', '') || 'front',
+        url: m.url,
+        alt_text: m.altText || createdProduct.name,
+        is_primary: m.isPrimary ?? (idx === 0),
+        sortOrder: m.sortOrder ?? idx,
+      }));
+
+      await supabase.from('product_media').insert(mediaRows);
+    }
+
+    return NextResponse.json({ success: true, product: mapRowToProduct(createdProduct) }, { status: 201 });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error creating catalog item';
     return NextResponse.json({ error: msg }, { status: 400 });
@@ -155,7 +188,7 @@ export async function PATCH(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ success: true, variant: data }, { status: 200 });
     }
 
-    const { id, ...updates } = body.product;
+    const { id, media, ...updates } = body.product;
     const { data, error } = await supabase
       .from('products')
       .update(mapProductToRow({ ...updates, id }))
@@ -163,6 +196,23 @@ export async function PATCH(req: NextRequest): Promise<NextResponse> {
       .select()
       .single();
     if (error) throw error;
+
+    // Update media records if passed
+    if (Array.isArray(media)) {
+      await supabase.from('product_media').delete().eq('product_id', id);
+      if (media.length > 0) {
+        const mediaRows = media.map((m: any, idx: number) => ({
+          id: `med-${id}-${idx}-${Date.now().toString().slice(-3)}`,
+          product_id: id,
+          type: (m.mediaType || 'front').replace('image_', ''),
+          url: m.url,
+          alt_text: m.altText || data.name,
+          is_primary: m.isPrimary ?? (idx === 0),
+          sort_order: m.sortOrder ?? idx,
+        }));
+        await supabase.from('product_media').insert(mediaRows);
+      }
+    }
 
     return NextResponse.json({ success: true, product: mapRowToProduct(data) }, { status: 200 });
   } catch (err: unknown) {
@@ -187,21 +237,21 @@ export async function DELETE(req: NextRequest): Promise<NextResponse> {
     const id = searchParams.get('id');
 
     if (!id) {
-      return NextResponse.json({ error: 'Missing ID parameter' }, { status: 400 });
+      return NextResponse.json({ error: 'ID is required' }, { status: 400 });
     }
 
     if (type === 'variant') {
       const { error } = await supabase.from('product_variants').delete().eq('id', id);
       if (error) throw error;
-      return NextResponse.json({ success: true, message: `Variant ${id} deleted` });
+      return NextResponse.json({ success: true, message: 'Variant deleted' }, { status: 200 });
     }
 
     const { error } = await supabase.from('products').delete().eq('id', id);
     if (error) throw error;
 
-    return NextResponse.json({ success: true, message: `Product ${id} deleted` });
+    return NextResponse.json({ success: true, message: 'Product deleted' }, { status: 200 });
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Error deleting item';
+    const msg = err instanceof Error ? err.message : 'Error deleting catalog item';
     return NextResponse.json({ error: msg }, { status: 400 });
   }
 }

@@ -155,7 +155,7 @@ export default function AdminPage() {
   // Product Modals State
   const [editingProduct, setEditingProduct] = useState<ResolvedProduct | null>(null);
   const [isCreatingProduct, setIsCreatingProduct] = useState(false);
-  const [productFormData, setProductFormData] = useState<Partial<Product>>({});
+  const [productFormData, setProductFormData] = useState<Partial<Product & { media?: any[] }>>({});
   const [isSavingProduct, setIsSavingProduct] = useState(false);
 
   // Variant Modal State
@@ -202,6 +202,53 @@ export default function AdminPage() {
       showToast('Network error uploading 3D model', 'error');
     } finally {
       setIsUploadingGlb(false);
+    }
+  };
+
+  const [isUploadingImage, setIsUploadingImage] = useState<string | null>(null);
+
+  const handleImageUpload = async (file: File, imageType: 'front' | 'side' | 'lifestyle') => {
+    setIsUploadingImage(imageType);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('imageType', imageType);
+
+      const res = await fetch('/api/upload-image', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (res.ok && data.imageUrl) {
+        setProductFormData((prev: any) => {
+          const currentMedia = Array.isArray(prev.media) ? [...prev.media] : [];
+          const existingIdx = currentMedia.findIndex(
+            (m: any) => m.mediaType === `image_${imageType}` || m.type === imageType,
+          );
+          const newMediaItem = {
+            id: `med-${Date.now()}`,
+            url: data.imageUrl,
+            altText: `${prev.name || 'Product'} ${imageType}`,
+            mediaType: `image_${imageType}`,
+            isPrimary: imageType === 'front',
+            sortOrder: imageType === 'front' ? 0 : imageType === 'side' ? 1 : 2,
+          };
+          if (existingIdx >= 0) {
+            currentMedia[existingIdx] = newMediaItem;
+          } else {
+            currentMedia.push(newMediaItem);
+          }
+          return { ...prev, media: currentMedia };
+        });
+        showToast(`Uploaded ${imageType} view photo!`);
+      } else {
+        showToast(data.error || 'Failed to upload photo', 'error');
+      }
+    } catch {
+      showToast('Network error uploading photo', 'error');
+    } finally {
+      setIsUploadingImage(null);
     }
   };
 
@@ -1424,6 +1471,170 @@ export default function AdminPage() {
                 </div>
               </div>
 
+              {/* Product Photos (Front, Side, Lifestyle) */}
+              <div className="space-y-2 p-3.5 bg-neutral-950 rounded-2xl border border-neutral-800">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-brand-400">
+                    Product Photos (Front, Side, On-Model)
+                  </span>
+                  {isUploadingImage && (
+                    <span className="text-brand-400 text-[10px] flex items-center gap-1">
+                      <div className="w-2.5 h-2.5 border-2 border-brand-400 border-t-transparent rounded-full animate-spin" />
+                      Uploading {isUploadingImage} photo...
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {/* Front View */}
+                  <div className="space-y-1.5 p-2.5 bg-neutral-900/60 rounded-xl border border-neutral-800">
+                    <label className="text-[10px] font-bold text-neutral-300 block">
+                      📷 Front View (Catalog)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="/images/products/.../front.webp"
+                      value={
+                        (productFormData.media as any[])?.find(
+                          (m) => m.mediaType === 'image_front' || m.type === 'front',
+                        )?.url || ''
+                      }
+                      onChange={(e) => {
+                        const url = e.target.value;
+                        setProductFormData((prev: any) => {
+                          const currentMedia = Array.isArray(prev.media) ? [...prev.media] : [];
+                          const idx = currentMedia.findIndex(
+                            (m: any) => m.mediaType === 'image_front' || m.type === 'front',
+                          );
+                          const item = {
+                            id: `med-${Date.now()}`,
+                            url,
+                            altText: `${prev.name || 'Product'} Front`,
+                            mediaType: 'image_front',
+                            isPrimary: true,
+                            sortOrder: 0,
+                          };
+                          if (idx >= 0) currentMedia[idx] = item;
+                          else currentMedia.push(item);
+                          return { ...prev, media: currentMedia };
+                        });
+                      }}
+                      className="w-full px-2 py-1.5 bg-neutral-950 border border-neutral-700 rounded-lg text-white font-mono text-[10px]"
+                    />
+                    <label className="w-full py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-[10px] font-bold rounded-lg flex items-center justify-center gap-1 cursor-pointer transition">
+                      <span>Upload Front</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) handleImageUpload(f, 'front');
+                        }}
+                      />
+                    </label>
+                  </div>
+
+                  {/* Side View */}
+                  <div className="space-y-1.5 p-2.5 bg-neutral-900/60 rounded-xl border border-neutral-800">
+                    <label className="text-[10px] font-bold text-neutral-300 block">
+                      📷 Side / Angle View
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="/images/products/.../side.webp"
+                      value={
+                        (productFormData.media as any[])?.find(
+                          (m) => m.mediaType === 'image_side' || m.type === 'side',
+                        )?.url || ''
+                      }
+                      onChange={(e) => {
+                        const url = e.target.value;
+                        setProductFormData((prev: any) => {
+                          const currentMedia = Array.isArray(prev.media) ? [...prev.media] : [];
+                          const idx = currentMedia.findIndex(
+                            (m: any) => m.mediaType === 'image_side' || m.type === 'side',
+                          );
+                          const item = {
+                            id: `med-${Date.now()}`,
+                            url,
+                            altText: `${prev.name || 'Product'} Side`,
+                            mediaType: 'image_side',
+                            isPrimary: false,
+                            sortOrder: 1,
+                          };
+                          if (idx >= 0) currentMedia[idx] = item;
+                          else currentMedia.push(item);
+                          return { ...prev, media: currentMedia };
+                        });
+                      }}
+                      className="w-full px-2 py-1.5 bg-neutral-950 border border-neutral-700 rounded-lg text-white font-mono text-[10px]"
+                    />
+                    <label className="w-full py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-[10px] font-bold rounded-lg flex items-center justify-center gap-1 cursor-pointer transition">
+                      <span>Upload Side</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) handleImageUpload(f, 'side');
+                        }}
+                      />
+                    </label>
+                  </div>
+
+                  {/* Lifestyle / On-Model View */}
+                  <div className="space-y-1.5 p-2.5 bg-neutral-900/60 rounded-xl border border-neutral-800">
+                    <label className="text-[10px] font-bold text-neutral-300 block">
+                      📷 On-Model / Lifestyle
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="/images/products/.../lifestyle.webp"
+                      value={
+                        (productFormData.media as any[])?.find(
+                          (m) => m.mediaType === 'image_lifestyle' || m.type === 'lifestyle',
+                        )?.url || ''
+                      }
+                      onChange={(e) => {
+                        const url = e.target.value;
+                        setProductFormData((prev: any) => {
+                          const currentMedia = Array.isArray(prev.media) ? [...prev.media] : [];
+                          const idx = currentMedia.findIndex(
+                            (m: any) => m.mediaType === 'image_lifestyle' || m.type === 'lifestyle',
+                          );
+                          const item = {
+                            id: `med-${Date.now()}`,
+                            url,
+                            altText: `${prev.name || 'Product'} Lifestyle`,
+                            mediaType: 'image_lifestyle',
+                            isPrimary: false,
+                            sortOrder: 2,
+                          };
+                          if (idx >= 0) currentMedia[idx] = item;
+                          else currentMedia.push(item);
+                          return { ...prev, media: currentMedia };
+                        });
+                      }}
+                      className="w-full px-2 py-1.5 bg-neutral-950 border border-neutral-700 rounded-lg text-white font-mono text-[10px]"
+                    />
+                    <label className="w-full py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-[10px] font-bold rounded-lg flex items-center justify-center gap-1 cursor-pointer transition">
+                      <span>Upload Model</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) handleImageUpload(f, 'lifestyle');
+                        }}
+                      />
+                    </label>
+                  </div>
+                </div>
+              </div>
+
               {/* Description */}
               <div className="space-y-1">
                 <label className="text-neutral-400 font-semibold">Description</label>
@@ -1500,7 +1711,10 @@ export default function AdminPage() {
 
       {/* ── MODAL: MANAGE VARIANTS ────────────────────────────────────────── */}
       {managingVariantsProduct && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+        <div
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto"
+          onClick={() => setManagingVariantsProduct(null)}
+        >
           <div
             className="bg-neutral-900 border border-neutral-800 rounded-3xl max-w-3xl w-full p-6 sm:p-7 space-y-6 shadow-2xl relative my-8"
             onClick={(e) => e.stopPropagation()}
@@ -1515,13 +1729,14 @@ export default function AdminPage() {
                     Variants & Colors: {managingVariantsProduct.name}
                   </h2>
                   <p className="text-xs text-neutral-400">
-                    Manage colorways, price overrides, inventory stock, and 3D VTO models
+                    Manage colorways, stock quantities, price overrides, and 3D VTO models
                   </p>
                 </div>
               </div>
               <button
+                type="button"
                 onClick={() => setManagingVariantsProduct(null)}
-                className="p-2 rounded-xl bg-neutral-800 text-neutral-400 hover:text-white transition"
+                className="p-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white transition"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1551,16 +1766,50 @@ export default function AdminPage() {
                             ({v.sku})
                           </span>
                         </div>
-                        <span className="text-[11px] text-neutral-400 block">
-                          ₦{v.effectivePrice.toLocaleString()}{' '}
-                          {v.hasPriceOverride && '(Price Override)'}
-                        </span>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-[11px] text-neutral-400">
+                            ₦{v.effectivePrice.toLocaleString()}
+                          </span>
+                          <span className="text-neutral-600">·</span>
+                          <span className="text-[11px] font-semibold text-brand-400">
+                            📦 {v.unitsInStock ?? (v.inStock ? 10 : 0)} in stock
+                          </span>
+                        </div>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2.5">
+                      {/* Quick Qty adjuster */}
+                      <div className="flex items-center gap-1 bg-neutral-900 border border-neutral-800 rounded-lg p-0.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const cur = v.unitsInStock ?? 10;
+                            const next = Math.max(0, cur - 1);
+                            handleUpdateVariantStock(v, next > 0);
+                          }}
+                          className="w-6 h-6 rounded bg-neutral-800 hover:bg-neutral-700 text-white font-bold flex items-center justify-center text-xs"
+                        >
+                          -
+                        </button>
+                        <span className="px-2 font-mono font-bold text-white text-xs">
+                          {v.unitsInStock ?? (v.inStock ? 10 : 0)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const cur = v.unitsInStock ?? 10;
+                            handleUpdateVariantStock(v, true);
+                          }}
+                          className="w-6 h-6 rounded bg-neutral-800 hover:bg-neutral-700 text-white font-bold flex items-center justify-center text-xs"
+                        >
+                          +
+                        </button>
+                      </div>
+
                       {/* Stock Toggle */}
                       <button
+                        type="button"
                         onClick={() => handleUpdateVariantStock(v, !v.inStock)}
                         className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition ${
                           v.inStock
@@ -1584,6 +1833,7 @@ export default function AdminPage() {
 
                       {/* Delete Variant */}
                       <button
+                        type="button"
                         onClick={() => handleDeleteVariant(v.id, v.colorName)}
                         className="p-1.5 text-neutral-500 hover:text-red-400 transition"
                         title="Delete variant"
@@ -1606,7 +1856,7 @@ export default function AdminPage() {
                 <span className="font-bold text-white text-xs">Add New Color Variant</span>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                 <div className="space-y-1">
                   <label className="text-neutral-400">Color Name *</label>
                   <input
@@ -1645,10 +1895,29 @@ export default function AdminPage() {
                 </div>
 
                 <div className="space-y-1">
+                  <label className="text-neutral-400">Units in Stock (Qty) *</label>
+                  <input
+                    type="number"
+                    min="0"
+                    required
+                    placeholder="e.g. 15"
+                    value={newVariantData.unitsInStock ?? 10}
+                    onChange={(e) =>
+                      setNewVariantData({
+                        ...newVariantData,
+                        unitsInStock: Math.max(0, parseInt(e.target.value, 10) || 0),
+                        inStock: (parseInt(e.target.value, 10) || 0) > 0,
+                      })
+                    }
+                    className="w-full px-3 py-2 bg-neutral-900 border border-neutral-700 rounded-xl text-white font-mono"
+                  />
+                </div>
+
+                <div className="space-y-1">
                   <label className="text-neutral-400">Price Override (Optional ₦)</label>
                   <input
                     type="number"
-                    placeholder="Inherits base price if empty"
+                    placeholder="Inherits base price"
                     value={newVariantData.priceOverride || ''}
                     onChange={(e) =>
                       setNewVariantData({
@@ -1718,8 +1987,9 @@ export default function AdminPage() {
 
             <div className="flex justify-end pt-2 border-t border-neutral-800">
               <button
+                type="button"
                 onClick={() => setManagingVariantsProduct(null)}
-                className="px-5 py-2.5 bg-neutral-800 hover:bg-neutral-700 text-white rounded-xl font-semibold transition text-xs"
+                className="px-6 py-2.5 bg-neutral-800 hover:bg-neutral-700 text-white rounded-xl font-bold transition text-xs shadow-md"
               >
                 Done
               </button>
