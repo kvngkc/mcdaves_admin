@@ -209,6 +209,44 @@ export default function AdminPage() {
     }
   };
 
+  const [isGeneratingGlb, setIsGeneratingGlb] = useState(false);
+
+  const handleGenerateGlbModel = async () => {
+    if (!managingVariantsProduct) return;
+    setIsGeneratingGlb(true);
+    try {
+      const res = await fetch('/api/generate-model', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productName: managingVariantsProduct.name,
+          variantName: newVariantData.colorName || 'Variant',
+          colorHex: newVariantData.colorHex || '#1A1A1A',
+          style: managingVariantsProduct.slug?.includes('cat-eye')
+            ? 'cat-eye'
+            : managingVariantsProduct.slug?.includes('aviator')
+            ? 'aviator'
+            : 'round',
+          frameWidthMm: managingVariantsProduct.defaultSpecifications?.frameWidthMm || 140,
+          lensWidthMm: managingVariantsProduct.defaultSpecifications?.lensWidthMm || 50,
+          bridgeWidthMm: managingVariantsProduct.defaultSpecifications?.bridgeWidthMm || 18,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.glbPath) {
+        setNewVariantData((prev) => ({ ...prev, glbPath: data.glbPath }));
+        showToast(`✨ 3D Model Generated: ${data.summary || data.filename}`);
+      } else {
+        showToast(data.error || 'Failed to generate 3D model', 'error');
+      }
+    } catch {
+      showToast('Error connecting to 3D generator engine', 'error');
+    } finally {
+      setIsGeneratingGlb(false);
+    }
+  };
+
   const [isUploadingImage, setIsUploadingImage] = useState<string | null>(null);
 
   const handleImageUpload = async (file: File, imageType: 'front' | 'side' | 'lifestyle') => {
@@ -1974,6 +2012,25 @@ export default function AdminPage() {
                     className="flex-1 px-3 py-2 bg-neutral-950 border border-neutral-700 rounded-xl text-white font-mono text-[11px]"
                   />
 
+                  <button
+                    type="button"
+                    onClick={handleGenerateGlbModel}
+                    disabled={isGeneratingGlb || isUploadingGlb}
+                    className="px-3.5 py-2 bg-brand-600/20 hover:bg-brand-600/30 text-brand-300 border border-brand-500/30 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition flex-shrink-0 active:scale-95 disabled:opacity-50"
+                  >
+                    {isGeneratingGlb ? (
+                      <>
+                        <div className="w-3.5 h-3.5 border-2 border-brand-400 border-t-transparent rounded-full animate-spin" />
+                        <span>Generating...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-3.5 h-3.5 text-brand-400" />
+                        <span>✨ Auto-Generate 3D</span>
+                      </>
+                    )}
+                  </button>
+
                   <label className="px-3.5 py-2 bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition flex-shrink-0">
                     <Sparkles className="w-3.5 h-3.5" />
                     <span>Upload .glb</span>
@@ -1981,7 +2038,7 @@ export default function AdminPage() {
                       type="file"
                       accept=".glb"
                       className="hidden"
-                      disabled={isUploadingGlb}
+                      disabled={isUploadingGlb || isGeneratingGlb}
                       onChange={(e) => {
                         const f = e.target.files?.[0];
                         if (f) handleGlbFileUpload(f);
@@ -1990,7 +2047,7 @@ export default function AdminPage() {
                   </label>
                 </div>
                 <p className="text-[10px] text-neutral-500">
-                  Select a binary 3D eyewear model (.glb up to 50MB) to enable live AR fitting.
+                  Click <b>✨ Auto-Generate 3D</b> to create a calibrated 3D model instantly, or upload an existing .glb file.
                 </p>
               </div>
 
