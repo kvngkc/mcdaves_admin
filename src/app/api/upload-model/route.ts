@@ -48,12 +48,30 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       .replace(/_+/g, '_');
 
     const sanitizedFilename = `${baseClean}_${Date.now().toString().slice(-4)}.glb`;
-    const buffer = Buffer.from(await file.arrayBuffer());
+    const arrayBuf = await file.arrayBuffer();
+    const rawBuffer = Buffer.from(arrayBuf);
 
-    // Upload to Supabase Storage bucket 'vto-models'
+    // Run Automated 3D Compression & Optimization Pipeline
+    let finalBuffer: Uint8Array = new Uint8Array(arrayBuf);
+    let originalSizeBytes = file.size;
+    let optimizedSizeBytes = file.size;
+    let savingsPercent = 0;
+
+    try {
+      const { optimizeGlbBuffer } = await import('@/lib/vto/glb-optimizer');
+      const optResult = await optimizeGlbBuffer(rawBuffer, { maxTextureDimension: 1024, textureQuality: 82 });
+      finalBuffer = optResult.optimizedBuffer;
+      originalSizeBytes = optResult.originalSizeBytes;
+      optimizedSizeBytes = optResult.optimizedSizeBytes;
+      savingsPercent = optResult.savingsPercent;
+    } catch (optError) {
+      console.warn('[VTO Ingestion] Warning: Automated optimization failed; uploading original binary:', optError);
+    }
+
+    // Upload optimized GLB to Supabase Storage bucket 'vto-models'
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from('vto-models')
-      .upload(sanitizedFilename, buffer, {
+      .upload(sanitizedFilename, finalBuffer, {
         contentType: 'model/gltf-binary',
         upsert: true,
       });
@@ -76,8 +94,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         success: true,
         glbPath: glbUrl,
         filename: sanitizedFilename,
-        sizeBytes: file.size,
-        message: '3D GLB model uploaded successfully',
+        sizeBytes: optimizedSizeBytes,
+        originalSizeBytes,
+        savingsPercent,
+        compressionSummary: `${(originalSizeBytes / (1024 * 1024)).toFixed(2)} MB ➔ ${(optimizedSizeBytes / 1024).toFixed(1)} KB (${savingsPercent}% saved)`,
+        message: '3D GLB model uploaded and optimized successfully',
       },
       { status: 201 },
     );

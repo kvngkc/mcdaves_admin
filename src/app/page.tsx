@@ -194,7 +194,11 @@ export default function AdminPage() {
       const data = await res.json();
       if (res.ok && data.glbPath) {
         setNewVariantData((prev) => ({ ...prev, glbPath: data.glbPath }));
-        showToast(`Uploaded 3D Model: ${data.filename}`);
+        showToast(
+          data.compressionSummary
+            ? `3D Model Optimized! ${data.compressionSummary}`
+            : `Uploaded 3D Model: ${data.filename}`,
+        );
       } else {
         showToast(data.error || 'Failed to upload 3D model', 'error');
       }
@@ -394,6 +398,7 @@ export default function AdminPage() {
       },
       prescriptionRequired: true,
       tryOnAvailable: true,
+      hideWhenOutOfStock: true,
       status: 'ACTIVE',
     });
     setIsCreatingProduct(true);
@@ -403,6 +408,7 @@ export default function AdminPage() {
     setEditingProduct(product);
     setProductFormData({
       ...product,
+      hideWhenOutOfStock: product.hideWhenOutOfStock ?? true,
       features: [...product.features],
       defaultSpecifications: { ...product.defaultSpecifications },
     });
@@ -1679,6 +1685,21 @@ export default function AdminPage() {
                     className="rounded bg-neutral-950 border-neutral-700 text-brand-600 focus:ring-brand-500 w-4 h-4"
                   />
                   <span className="text-neutral-300">Prescription Ready</span>
+                </label>
+
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={productFormData.hideWhenOutOfStock ?? true}
+                    onChange={(e) =>
+                      setProductFormData({
+                        ...productFormData,
+                        hideWhenOutOfStock: e.target.checked,
+                      })
+                    }
+                    className="rounded bg-neutral-950 border-neutral-700 text-brand-600 focus:ring-brand-500 w-4 h-4"
+                  />
+                  <span className="text-neutral-300">Auto-Hide from Store when Out of Stock</span>
                 </label>
               </div>
 

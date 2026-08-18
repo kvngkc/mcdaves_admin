@@ -33,6 +33,7 @@ export function mapRowToProduct(row: any): Product {
     },
     prescriptionRequired: row.prescription_required ?? true,
     tryOnAvailable: row.try_on_available ?? true,
+    hideWhenOutOfStock: row.hide_when_out_of_stock ?? true,
     status: row.status || 'ACTIVE',
     createdAt: row.created_at || new Date().toISOString(),
     updatedAt: row.updated_at || new Date().toISOString(),
@@ -60,6 +61,7 @@ export function mapProductToRow(product: Product): any {
     frame_size: product.defaultSpecifications.frameSize,
     prescription_required: product.prescriptionRequired,
     try_on_available: product.tryOnAvailable,
+    hide_when_out_of_stock: product.hideWhenOutOfStock ?? true,
     status: product.status,
     updated_at: new Date().toISOString(),
   };

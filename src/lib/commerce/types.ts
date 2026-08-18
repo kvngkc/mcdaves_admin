@@ -38,6 +38,7 @@ export interface Product {
   defaultSpecifications: PhysicalSpecifications;
   prescriptionRequired: boolean;
   tryOnAvailable: boolean;
+  hideWhenOutOfStock?: boolean;
   status: 'ACTIVE' | 'DRAFT' | 'ARCHIVED';
   createdAt: string;
   updatedAt: string;
