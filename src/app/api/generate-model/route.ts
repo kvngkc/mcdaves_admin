@@ -7,6 +7,7 @@ import {
   exportGroupToOptimizedGlb,
   EyewearStyle,
 } from '@/lib/vto/parametric-eyewear-builder';
+import { convertImageTo3DGlb } from '@/lib/vto/image-to-glb-builder';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,39 +22,59 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Supabase client not configured' }, { status: 500 });
     }
 
-    const body = await request.json();
-    const {
-      style = 'round',
-      colorHex = '#1A1A1A',
-      materialType = 'acetate',
-      productName = 'Eyewear Frame',
-      variantName = 'Standard',
-      frameWidthMm = 140,
-      lensWidthMm = 50,
-      lensHeightMm = 40,
-      bridgeWidthMm = 18,
-    } = body;
+    const contentType = request.headers.get('content-type') || '';
+    let optResult;
+    let productName = 'Eyewear Frame';
+    let variantName = 'Custom';
 
-    // 1. Build 3D Eyewear Model
-    const modelGroup = buildParametricEyewear({
-      style: style as EyewearStyle,
-      colorHex,
-      materialType: materialType as 'acetate' | 'metal' | 'tortoise',
-      frameWidthMm: Number(frameWidthMm) || 140,
-      lensWidthMm: Number(lensWidthMm) || 50,
-      lensHeightMm: Number(lensHeightMm) || 40,
-      bridgeWidthMm: Number(bridgeWidthMm) || 18,
-    });
+    if (contentType.includes('multipart/form-data')) {
+      // ─── 1. 2D IMAGE TO 3D GLB PIPELINE ────────────────────────────────────
+      const formData = await request.formData();
+      const file = formData.get('file') as File | null;
+      productName = (formData.get('productName') as string) || productName;
+      variantName = (formData.get('variantName') as string) || variantName;
+      const frameWidthMm = Number(formData.get('frameWidthMm')) || 140;
 
-    // 2. Export to Optimized Binary GLB
-    const optResult = await exportGroupToOptimizedGlb(modelGroup);
+      if (!file) {
+        return NextResponse.json({ error: 'No image file provided for 3D conversion' }, { status: 400 });
+      }
+
+      const imageBuffer = Buffer.from(await file.arrayBuffer());
+      optResult = await convertImageTo3DGlb(imageBuffer, { frameWidthMm, wrapRadiusMm: 145 });
+    } else {
+      // ─── 2. PARAMETRIC VECTOR GENERATOR ────────────────────────────────────
+      const body = await request.json();
+      const {
+        style = 'round',
+        colorHex = '#1A1A1A',
+        materialType = 'acetate',
+        frameWidthMm = 140,
+        lensWidthMm = 50,
+        lensHeightMm = 40,
+        bridgeWidthMm = 18,
+      } = body;
+      productName = body.productName || productName;
+      variantName = body.variantName || variantName;
+
+      const modelGroup = buildParametricEyewear({
+        style: style as EyewearStyle,
+        colorHex,
+        materialType: materialType as 'acetate' | 'metal' | 'tortoise',
+        frameWidthMm: Number(frameWidthMm) || 140,
+        lensWidthMm: Number(lensWidthMm) || 50,
+        lensHeightMm: Number(lensHeightMm) || 40,
+        bridgeWidthMm: Number(bridgeWidthMm) || 18,
+      });
+
+      optResult = await exportGroupToOptimizedGlb(modelGroup);
+    }
 
     // 3. Sanitize filename
     const cleanPrefix = `${productName}_${variantName}`
       .toLowerCase()
       .replace(/[^a-z0-9_-]/g, '_')
       .replace(/_+/g, '_');
-    const sanitizedFilename = `mcd_${cleanPrefix}_${Date.now().toString().slice(-4)}.glb`;
+    const sanitizedFilename = `mcd_vto_${cleanPrefix}_${Date.now().toString().slice(-4)}.glb`;
 
     // 4. Upload to Supabase Storage bucket 'vto-models'
     const { data: uploadData, error: uploadError } = await supabase.storage
