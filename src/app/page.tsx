@@ -29,6 +29,7 @@ import {
   AlertCircle,
   Eye,
   ArrowUpRight,
+  Upload,
 } from 'lucide-react';
 import {
   OrderIntent,
@@ -365,27 +366,56 @@ export default function AdminPage() {
     }
   }, [orderSearch]);
 
-  // Load Products
+  // Initial localStorage cache loader for slow networks
+  useEffect(() => {
+    try {
+      const cached = localStorage.getItem('mcdaves_admin_cached_products');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setProducts(parsed);
+        }
+      }
+    } catch {}
+  }, []);
+
+  // Global ESC key listener to close any open modal
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsCreatingProduct(false);
+        setEditingProduct(null);
+        setManagingVariantsProduct(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // Load Products (pure and decoupled)
   const loadProducts = useCallback(async () => {
     setIsLoadingProducts(true);
     try {
       const res = await fetch('/api/products');
       if (res.ok) {
         const data = await res.json();
-        setProducts(data.products || []);
-        if (managingVariantsProduct) {
-          const fresh = (data.products || []).find(
-            (p: ResolvedProduct) => p.id === managingVariantsProduct.id,
-          );
-          if (fresh) setManagingVariantsProduct(fresh);
-        }
+        const freshList: ResolvedProduct[] = data.products || [];
+        setProducts(freshList);
+        try {
+          localStorage.setItem('mcdaves_admin_cached_products', JSON.stringify(freshList));
+        } catch {}
+
+        setManagingVariantsProduct((cur) => {
+          if (!cur) return null;
+          return freshList.find((p) => p.id === cur.id) || null;
+        });
       }
     } catch (err) {
       console.error('Failed to load products:', err);
     } finally {
       setIsLoadingProducts(false);
     }
-  }, [managingVariantsProduct]);
+  }, []);
 
   useEffect(() => {
     if (activeTab === 'intents') loadIntents();
@@ -566,16 +596,22 @@ export default function AdminPage() {
       return;
     }
 
+    const previousProducts = [...products];
+    // Optimistic removal: remove immediately so there is zero flicker
+    setProducts((prev) => prev.filter((p) => p.id !== product.id));
+
     try {
       const res = await fetch(`/api/products?id=${product.id}`, { method: 'DELETE' });
       if (res.ok) {
-        showToast(`Product "${product.name}" deleted from Supabase`);
-        loadProducts();
+        showToast(`Product "${product.name}" deleted`);
       } else {
-        showToast('Failed to delete product', 'error');
+        // Rollback on failure
+        setProducts(previousProducts);
+        showToast('Failed to delete product from database', 'error');
       }
     } catch {
-      showToast('Server error while deleting product', 'error');
+      setProducts(previousProducts);
+      showToast('Network error while deleting product', 'error');
     }
   };
 
@@ -675,18 +711,27 @@ export default function AdminPage() {
   const handleDeleteVariant = async (variantId: string, colorName: string) => {
     if (!confirm(`Delete variant "${colorName}"?`)) return;
 
+    if (managingVariantsProduct) {
+      setManagingVariantsProduct({
+        ...managingVariantsProduct,
+        variants: managingVariantsProduct.variants.filter((v) => v.id !== variantId),
+      });
+    }
+
     try {
       const res = await fetch(`/api/products?type=variant&id=${variantId}`, {
         method: 'DELETE',
       });
       if (res.ok) {
-        showToast(`Variant deleted from Supabase`);
+        showToast(`Variant deleted`);
         loadProducts();
       } else {
         showToast('Error deleting variant', 'error');
+        loadProducts();
       }
     } catch {
       showToast('Error deleting variant', 'error');
+      loadProducts();
     }
   };
 
@@ -1310,35 +1355,54 @@ export default function AdminPage() {
 
       {/* ── MODAL: CREATE / EDIT PRODUCT ──────────────────────────────────── */}
       {(isCreatingProduct || editingProduct) && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+        <div
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 overflow-hidden"
+          onClick={() => {
+            setIsCreatingProduct(false);
+            setEditingProduct(null);
+          }}
+        >
           <div
-            className="bg-neutral-900 border border-neutral-800 rounded-3xl max-w-2xl w-full p-6 sm:p-7 space-y-6 shadow-2xl relative my-8"
+            className="bg-neutral-900 border border-neutral-800 rounded-3xl max-w-3xl w-full max-h-[92vh] flex flex-col shadow-2xl relative overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-neutral-800 pb-4">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-brand-600/20 text-brand-400 flex items-center justify-center">
-                  <Package className="w-4 h-4" />
+            {/* Sticky Modal Header */}
+            <div className="p-5 sm:p-6 border-b border-neutral-800 flex items-center justify-between flex-shrink-0 bg-neutral-900">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-brand-600/20 text-brand-400 flex items-center justify-center">
+                  <Package className="w-5 h-5" />
                 </div>
-                <h2 className="text-lg font-bold text-white">
-                  {isCreatingProduct ? 'Create New Eyewear Product' : `Edit "${editingProduct?.name}"`}
-                </h2>
+                <div>
+                  <h2 className="text-lg font-bold text-white">
+                    {isCreatingProduct ? 'Create New Eyewear Product' : `Edit "${editingProduct?.name}"`}
+                  </h2>
+                  <p className="text-xs text-neutral-400">
+                    Fill in product details, pricing, dimensions, and photos
+                  </p>
+                </div>
               </div>
               <button
+                type="button"
                 onClick={() => {
                   setIsCreatingProduct(false);
                   setEditingProduct(null);
                 }}
-                className="p-2 rounded-xl bg-neutral-800 text-neutral-400 hover:text-white transition"
+                className="p-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-white transition"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveProduct} className="space-y-4 text-xs">
+            {/* Scrollable Form Body */}
+            <form id="productForm" onSubmit={handleSaveProduct} className="overflow-y-auto p-5 sm:p-6 space-y-5 flex-1 custom-scrollbar text-xs">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-neutral-400 font-semibold">Product Name *</label>
+                  <label className="text-neutral-300 font-semibold flex items-center justify-between">
+                    <span>Product Name *</span>
+                    {(!productFormData.name || productFormData.name.trim().length < 2) && (
+                      <span className="text-[10px] text-amber-400 font-normal">Required</span>
+                    )}
+                  </label>
                   <input
                     type="text"
                     required
@@ -1365,7 +1429,7 @@ export default function AdminPage() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-neutral-400 font-semibold">Category</label>
+                  <label className="text-neutral-400 font-semibold">Category *</label>
                   <select
                     value={productFormData.category || 'unisex'}
                     onChange={(e) =>
@@ -1376,15 +1440,15 @@ export default function AdminPage() {
                     }
                     className="w-full px-3 py-2 bg-neutral-950 border border-neutral-700 rounded-xl text-white focus:outline-none focus:border-brand-500"
                   >
-                    <option value="unisex">Unisex</option>
-                    <option value="men">Men</option>
-                    <option value="women">Women</option>
-                    <option value="sunglasses">Sunglasses</option>
+                    <option value="unisex">Unisex Eyewear</option>
+                    <option value="men">Men's Optical</option>
+                    <option value="women">Women's Optical</option>
+                    <option value="sunglasses">Designer Sunglasses</option>
                   </select>
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-neutral-400 font-semibold">Status</label>
+                  <label className="text-neutral-400 font-semibold">Catalog Status</label>
                   <select
                     value={productFormData.status || 'ACTIVE'}
                     onChange={(e) =>
@@ -1402,10 +1466,16 @@ export default function AdminPage() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-neutral-400 font-semibold">Default Price (₦) *</label>
+                  <label className="text-neutral-300 font-semibold flex items-center justify-between">
+                    <span>Default Price (₦) *</span>
+                    {(!productFormData.defaultPrice || Number(productFormData.defaultPrice) <= 0) && (
+                      <span className="text-[10px] text-amber-400 font-normal">Must be &gt; 0</span>
+                    )}
+                  </label>
                   <input
                     type="number"
                     required
+                    min="1"
                     value={productFormData.defaultPrice || ''}
                     onChange={(e) =>
                       setProductFormData({
@@ -1419,7 +1489,7 @@ export default function AdminPage() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-neutral-400 font-semibold">Original / Compare Price (₦)</label>
+                  <label className="text-neutral-400 font-semibold">Original Price (₦ Optional)</label>
                   <input
                     type="number"
                     value={productFormData.defaultOriginalPrice || ''}
@@ -1467,7 +1537,7 @@ export default function AdminPage() {
                 </div>
               </div>
 
-              {/* Physical Dimensions (mm) */}
+              {/* Optical Dimensions */}
               <div className="p-3.5 bg-neutral-950 rounded-2xl border border-neutral-800 space-y-2.5">
                 <span className="text-[11px] font-bold text-brand-400 block">
                   Optical Dimensions (mm)
@@ -1547,167 +1617,156 @@ export default function AdminPage() {
                 </div>
               </div>
 
-              {/* Product Photos (Front, Side, Lifestyle) */}
-              <div className="space-y-2 p-3.5 bg-neutral-950 rounded-2xl border border-neutral-800">
+              {/* Product Photos with Rich Feedback Cards */}
+              <div className="space-y-3 p-4 bg-neutral-950 rounded-2xl border border-neutral-800">
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold text-brand-400">
-                    Product Photos (Front, Side, On-Model)
-                  </span>
+                  <div>
+                    <span className="text-xs font-bold text-brand-400 block">
+                      Product Photos (Front, Side, On-Model)
+                    </span>
+                    <span className="text-[10px] text-neutral-500">
+                      Front view is required for store catalog display
+                    </span>
+                  </div>
                   {isUploadingImage && (
-                    <span className="text-brand-400 text-[10px] flex items-center gap-1">
-                      <div className="w-2.5 h-2.5 border-2 border-brand-400 border-t-transparent rounded-full animate-spin" />
-                      Uploading {isUploadingImage} photo...
+                    <span className="text-brand-400 text-xs flex items-center gap-1.5 bg-brand-950/80 px-2.5 py-1 rounded-lg border border-brand-800/60">
+                      <div className="w-3 h-3 border-2 border-brand-400 border-t-transparent rounded-full animate-spin" />
+                      Uploading {isUploadingImage}...
                     </span>
                   )}
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {/* Front View */}
-                  <div className="space-y-1.5 p-2.5 bg-neutral-900/60 rounded-xl border border-neutral-800">
-                    <label className="text-[10px] font-bold text-neutral-300 block">
-                      📷 Front View (Catalog)
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="/images/products/.../front.webp"
-                      value={
-                        (productFormData.media as any[])?.find(
-                          (m) => m.mediaType === 'image_front' || m.type === 'front',
-                        )?.url || ''
-                      }
-                      onChange={(e) => {
-                        const url = e.target.value;
-                        setProductFormData((prev: any) => {
-                          const currentMedia = Array.isArray(prev.media) ? [...prev.media] : [];
-                          const idx = currentMedia.findIndex(
-                            (m: any) => m.mediaType === 'image_front' || m.type === 'front',
-                          );
-                          const item = {
-                            id: `med-${Date.now()}`,
-                            url,
-                            altText: `${prev.name || 'Product'} Front`,
-                            mediaType: 'image_front',
-                            isPrimary: true,
-                            sortOrder: 0,
-                          };
-                          if (idx >= 0) currentMedia[idx] = item;
-                          else currentMedia.push(item);
-                          return { ...prev, media: currentMedia };
-                        });
-                      }}
-                      className="w-full px-2 py-1.5 bg-neutral-950 border border-neutral-700 rounded-lg text-white font-mono text-[10px]"
-                    />
-                    <label className="w-full py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-[10px] font-bold rounded-lg flex items-center justify-center gap-1 cursor-pointer transition">
-                      <span>Upload Front</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) => {
-                          const f = e.target.files?.[0];
-                          if (f) handleImageUpload(f, 'front');
-                        }}
-                      />
-                    </label>
-                  </div>
+                  {/* Front Photo Slot */}
+                  {(() => {
+                    const frontMedia = (productFormData.media as any[])?.find(
+                      (m) => m.mediaType === 'image_front' || m.type === 'front',
+                    );
+                    return (
+                      <div className={`p-3 rounded-xl border flex flex-col justify-between gap-2.5 transition ${
+                        frontMedia?.url ? 'bg-neutral-900/80 border-emerald-500/40' : 'bg-neutral-900/40 border-neutral-800'
+                      }`}>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold text-neutral-200">📷 Front View *</span>
+                          {frontMedia?.url ? (
+                            <span className="px-1.5 py-0.5 bg-emerald-500/20 text-emerald-400 text-[9px] font-bold rounded">
+                              ✓ Uploaded
+                            </span>
+                          ) : (
+                            <span className="text-[9px] text-amber-400 font-semibold">Required</span>
+                          )}
+                        </div>
 
-                  {/* Side View */}
-                  <div className="space-y-1.5 p-2.5 bg-neutral-900/60 rounded-xl border border-neutral-800">
-                    <label className="text-[10px] font-bold text-neutral-300 block">
-                      📷 Side / Angle View
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="/images/products/.../side.webp"
-                      value={
-                        (productFormData.media as any[])?.find(
-                          (m) => m.mediaType === 'image_side' || m.type === 'side',
-                        )?.url || ''
-                      }
-                      onChange={(e) => {
-                        const url = e.target.value;
-                        setProductFormData((prev: any) => {
-                          const currentMedia = Array.isArray(prev.media) ? [...prev.media] : [];
-                          const idx = currentMedia.findIndex(
-                            (m: any) => m.mediaType === 'image_side' || m.type === 'side',
-                          );
-                          const item = {
-                            id: `med-${Date.now()}`,
-                            url,
-                            altText: `${prev.name || 'Product'} Side`,
-                            mediaType: 'image_side',
-                            isPrimary: false,
-                            sortOrder: 1,
-                          };
-                          if (idx >= 0) currentMedia[idx] = item;
-                          else currentMedia.push(item);
-                          return { ...prev, media: currentMedia };
-                        });
-                      }}
-                      className="w-full px-2 py-1.5 bg-neutral-950 border border-neutral-700 rounded-lg text-white font-mono text-[10px]"
-                    />
-                    <label className="w-full py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-[10px] font-bold rounded-lg flex items-center justify-center gap-1 cursor-pointer transition">
-                      <span>Upload Side</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) => {
-                          const f = e.target.files?.[0];
-                          if (f) handleImageUpload(f, 'side');
-                        }}
-                      />
-                    </label>
-                  </div>
+                        {frontMedia?.url && (
+                          <div className="relative w-full h-20 rounded-lg overflow-hidden border border-neutral-800 bg-black/40">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={frontMedia.url} alt="Front View" className="w-full h-full object-contain" />
+                          </div>
+                        )}
 
-                  {/* Lifestyle / On-Model View */}
-                  <div className="space-y-1.5 p-2.5 bg-neutral-900/60 rounded-xl border border-neutral-800">
-                    <label className="text-[10px] font-bold text-neutral-300 block">
-                      📷 On-Model / Lifestyle
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="/images/products/.../lifestyle.webp"
-                      value={
-                        (productFormData.media as any[])?.find(
-                          (m) => m.mediaType === 'image_lifestyle' || m.type === 'lifestyle',
-                        )?.url || ''
-                      }
-                      onChange={(e) => {
-                        const url = e.target.value;
-                        setProductFormData((prev: any) => {
-                          const currentMedia = Array.isArray(prev.media) ? [...prev.media] : [];
-                          const idx = currentMedia.findIndex(
-                            (m: any) => m.mediaType === 'image_lifestyle' || m.type === 'lifestyle',
-                          );
-                          const item = {
-                            id: `med-${Date.now()}`,
-                            url,
-                            altText: `${prev.name || 'Product'} Lifestyle`,
-                            mediaType: 'image_lifestyle',
-                            isPrimary: false,
-                            sortOrder: 2,
-                          };
-                          if (idx >= 0) currentMedia[idx] = item;
-                          else currentMedia.push(item);
-                          return { ...prev, media: currentMedia };
-                        });
-                      }}
-                      className="w-full px-2 py-1.5 bg-neutral-950 border border-neutral-700 rounded-lg text-white font-mono text-[10px]"
-                    />
-                    <label className="w-full py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-[10px] font-bold rounded-lg flex items-center justify-center gap-1 cursor-pointer transition">
-                      <span>Upload Model</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) => {
-                          const f = e.target.files?.[0];
-                          if (f) handleImageUpload(f, 'lifestyle');
-                        }}
-                      />
-                    </label>
-                  </div>
+                        <label className="w-full py-2 bg-neutral-800 hover:bg-neutral-700 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 cursor-pointer transition shadow-sm">
+                          <Upload className="w-3.5 h-3.5 text-brand-400" />
+                          <span>{frontMedia?.url ? 'Replace Photo' : 'Upload Front'}</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            disabled={!!isUploadingImage}
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              if (f) handleImageUpload(f, 'front');
+                            }}
+                          />
+                        </label>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Side Photo Slot */}
+                  {(() => {
+                    const sideMedia = (productFormData.media as any[])?.find(
+                      (m) => m.mediaType === 'image_side' || m.type === 'side',
+                    );
+                    return (
+                      <div className={`p-3 rounded-xl border flex flex-col justify-between gap-2.5 transition ${
+                        sideMedia?.url ? 'bg-neutral-900/80 border-emerald-500/40' : 'bg-neutral-900/40 border-neutral-800'
+                      }`}>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold text-neutral-200">📷 Side / Angle</span>
+                          {sideMedia?.url && (
+                            <span className="px-1.5 py-0.5 bg-emerald-500/20 text-emerald-400 text-[9px] font-bold rounded">
+                              ✓ Uploaded
+                            </span>
+                          )}
+                        </div>
+
+                        {sideMedia?.url && (
+                          <div className="relative w-full h-20 rounded-lg overflow-hidden border border-neutral-800 bg-black/40">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={sideMedia.url} alt="Side View" className="w-full h-full object-contain" />
+                          </div>
+                        )}
+
+                        <label className="w-full py-2 bg-neutral-800 hover:bg-neutral-700 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 cursor-pointer transition shadow-sm">
+                          <Upload className="w-3.5 h-3.5 text-brand-400" />
+                          <span>{sideMedia?.url ? 'Replace Photo' : 'Upload Side'}</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            disabled={!!isUploadingImage}
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              if (f) handleImageUpload(f, 'side');
+                            }}
+                          />
+                        </label>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Lifestyle Photo Slot */}
+                  {(() => {
+                    const lifeMedia = (productFormData.media as any[])?.find(
+                      (m) => m.mediaType === 'image_lifestyle' || m.type === 'lifestyle',
+                    );
+                    return (
+                      <div className={`p-3 rounded-xl border flex flex-col justify-between gap-2.5 transition ${
+                        lifeMedia?.url ? 'bg-neutral-900/80 border-emerald-500/40' : 'bg-neutral-900/40 border-neutral-800'
+                      }`}>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold text-neutral-200">📷 On-Model / Lifestyle</span>
+                          {lifeMedia?.url && (
+                            <span className="px-1.5 py-0.5 bg-emerald-500/20 text-emerald-400 text-[9px] font-bold rounded">
+                              ✓ Uploaded
+                            </span>
+                          )}
+                        </div>
+
+                        {lifeMedia?.url && (
+                          <div className="relative w-full h-20 rounded-lg overflow-hidden border border-neutral-800 bg-black/40">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={lifeMedia.url} alt="Lifestyle View" className="w-full h-full object-contain" />
+                          </div>
+                        )}
+
+                        <label className="w-full py-2 bg-neutral-800 hover:bg-neutral-700 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 cursor-pointer transition shadow-sm">
+                          <Upload className="w-3.5 h-3.5 text-brand-400" />
+                          <span>{lifeMedia?.url ? 'Replace Photo' : 'Upload Model'}</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            disabled={!!isUploadingImage}
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              if (f) handleImageUpload(f, 'lifestyle');
+                            }}
+                          />
+                        </label>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
 
@@ -1726,8 +1785,8 @@ export default function AdminPage() {
               </div>
 
               {/* Toggles */}
-              <div className="flex items-center gap-6 pt-2">
-                <label className="flex items-center gap-2 cursor-pointer">
+              <div className="flex flex-wrap items-center gap-5 pt-1">
+                <label className="flex items-center gap-2 cursor-pointer text-xs">
                   <input
                     type="checkbox"
                     checked={productFormData.tryOnAvailable ?? true}
@@ -1742,7 +1801,7 @@ export default function AdminPage() {
                   <span className="text-neutral-300">Virtual Try-On Enabled</span>
                 </label>
 
-                <label className="flex items-center gap-2 cursor-pointer">
+                <label className="flex items-center gap-2 cursor-pointer text-xs">
                   <input
                     type="checkbox"
                     checked={productFormData.prescriptionRequired ?? true}
@@ -1757,7 +1816,7 @@ export default function AdminPage() {
                   <span className="text-neutral-300">Prescription Ready</span>
                 </label>
 
-                <label className="flex items-center gap-2 cursor-pointer">
+                <label className="flex items-center gap-2 cursor-pointer text-xs">
                   <input
                     type="checkbox"
                     checked={productFormData.hideWhenOutOfStock ?? true}
@@ -1772,30 +1831,63 @@ export default function AdminPage() {
                   <span className="text-neutral-300">Auto-Hide from Store when Out of Stock</span>
                 </label>
               </div>
-
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-neutral-800">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsCreatingProduct(false);
-                    setEditingProduct(null);
-                  }}
-                  className="px-4 py-2.5 bg-neutral-800 hover:bg-neutral-700 text-white rounded-xl font-semibold transition"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSavingProduct}
-                  className="px-6 py-2.5 bg-brand-600 hover:bg-brand-500 disabled:bg-neutral-800 text-white rounded-xl font-bold transition shadow-lg shadow-brand-900/30 flex items-center gap-2"
-                >
-                  {isSavingProduct && (
-                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  )}
-                  <span>{isCreatingProduct ? 'Create Product' : 'Save Changes'}</span>
-                </button>
-              </div>
             </form>
+
+            {/* Sticky Modal Footer */}
+            {(() => {
+              const hasName = Boolean(productFormData.name && productFormData.name.trim().length >= 2);
+              const hasPrice = Boolean(productFormData.defaultPrice && Number(productFormData.defaultPrice) > 0);
+              const hasFrontImage = Boolean(
+                editingProduct ||
+                (productFormData.media as any[])?.some(
+                  (m) => m.url && (m.mediaType === 'image_front' || m.type === 'front'),
+                )
+              );
+              const isValid = hasName && hasPrice && hasFrontImage;
+
+              return (
+                <div className="p-4 sm:p-5 border-t border-neutral-800 bg-neutral-950 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 flex-shrink-0">
+                  <div className="text-xs">
+                    {!isValid ? (
+                      <span className="text-amber-400 flex items-center gap-1.5 font-medium">
+                        <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                        <span>
+                          {!hasName ? 'Enter Product Name' : !hasPrice ? 'Enter Valid Price' : 'Upload Front View photo to save'}
+                        </span>
+                      </span>
+                    ) : (
+                      <span className="text-emerald-400 flex items-center gap-1.5 font-medium">
+                        <span>✓ Ready to save to Supabase</span>
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsCreatingProduct(false);
+                        setEditingProduct(null);
+                      }}
+                      className="px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white rounded-xl text-xs font-semibold transition"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      form="productForm"
+                      disabled={isSavingProduct || !isValid}
+                      className="px-6 py-2 bg-brand-600 hover:bg-brand-500 disabled:bg-neutral-800 disabled:text-neutral-500 text-white rounded-xl text-xs font-bold transition shadow-lg shadow-brand-900/30 flex items-center gap-2"
+                    >
+                      {isSavingProduct && (
+                        <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      )}
+                      <span>{isCreatingProduct ? 'Create Product' : 'Save Changes'}</span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}
@@ -1803,17 +1895,18 @@ export default function AdminPage() {
       {/* ── MODAL: MANAGE VARIANTS ────────────────────────────────────────── */}
       {managingVariantsProduct && (
         <div
-          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto"
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 overflow-hidden"
           onClick={() => setManagingVariantsProduct(null)}
         >
           <div
-            className="bg-neutral-900 border border-neutral-800 rounded-3xl max-w-3xl w-full p-6 sm:p-7 space-y-6 shadow-2xl relative my-8"
+            className="bg-neutral-900 border border-neutral-800 rounded-3xl max-w-3xl w-full max-h-[92vh] flex flex-col shadow-2xl relative overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-neutral-800 pb-4">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-brand-600/20 text-brand-400 flex items-center justify-center">
-                  <Palette className="w-4 h-4" />
+            {/* Sticky Header */}
+            <div className="p-5 sm:p-6 border-b border-neutral-800 flex items-center justify-between flex-shrink-0 bg-neutral-900">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-brand-600/20 text-brand-400 flex items-center justify-center">
+                  <Palette className="w-5 h-5" />
                 </div>
                 <div>
                   <h2 className="text-lg font-bold text-white">
@@ -1826,297 +1919,312 @@ export default function AdminPage() {
               </div>
               <button
                 type="button"
-                onClick={() => setManagingVariantsProduct(null)}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setManagingVariantsProduct(null);
+                }}
                 className="p-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white transition"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Existing Variants List */}
-            <div className="space-y-3">
-              <span className="text-xs font-bold text-neutral-300 block">
-                Existing Variants ({managingVariantsProduct.variants.length})
-              </span>
+            {/* Scrollable Body */}
+            <div className="p-5 sm:p-6 overflow-y-auto space-y-6 flex-1 custom-scrollbar">
+              {/* Existing Variants List */}
+              <div className="space-y-3">
+                <span className="text-xs font-bold text-neutral-300 block">
+                  Active Variants ({managingVariantsProduct.variants.length})
+                </span>
 
-              <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                {managingVariantsProduct.variants.map((v) => (
-                  <div
-                    key={v.id}
-                    className="p-3 bg-neutral-950 rounded-2xl border border-neutral-800 flex flex-wrap items-center justify-between gap-3 text-xs"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span
-                        className="w-5 h-5 rounded-full border border-black/40 flex-shrink-0"
-                        style={{ backgroundColor: v.colorHex }}
-                      />
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-white">{v.colorName}</span>
-                          <span className="font-mono text-[10px] text-neutral-400">
-                            ({v.sku})
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          <span className="text-[11px] text-neutral-400">
-                            ₦{v.effectivePrice.toLocaleString()}
-                          </span>
-                          <span className="text-neutral-600">·</span>
-                          <span className="text-[11px] font-semibold text-brand-400">
-                            📦 {v.unitsInStock ?? (v.inStock ? 10 : 0)} in stock
-                          </span>
+                <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                  {managingVariantsProduct.variants.map((v) => (
+                    <div
+                      key={v.id}
+                      className="p-3 bg-neutral-950 rounded-2xl border border-neutral-800 flex flex-wrap items-center justify-between gap-3 text-xs"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span
+                          className="w-5 h-5 rounded-full border border-black/40 flex-shrink-0 shadow-inner"
+                          style={{ backgroundColor: v.colorHex }}
+                        />
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-white">{v.colorName}</span>
+                            <span className="font-mono text-[10px] text-neutral-400">
+                              ({v.sku})
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className="text-[11px] text-neutral-400">
+                              ₦{v.effectivePrice.toLocaleString()}
+                            </span>
+                            <span className="text-neutral-600">·</span>
+                            <span className="text-[11px] font-semibold text-brand-400">
+                              📦 {v.unitsInStock ?? (v.inStock ? 10 : 0)} in stock
+                            </span>
+                          </div>
                         </div>
                       </div>
-                    </div>
 
-                    <div className="flex items-center gap-2.5">
-                      {/* Quick Qty adjuster */}
-                      <div className="flex items-center gap-1 bg-neutral-900 border border-neutral-800 rounded-lg p-0.5">
+                      <div className="flex items-center gap-2.5">
+                        {/* Quick Qty adjuster */}
+                        <div className="flex items-center gap-1 bg-neutral-900 border border-neutral-800 rounded-lg p-0.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const cur = v.unitsInStock ?? 10;
+                              const next = Math.max(0, cur - 1);
+                              handleUpdateVariantStock(v, next > 0);
+                            }}
+                            className="w-6 h-6 rounded bg-neutral-800 hover:bg-neutral-700 text-white font-bold flex items-center justify-center text-xs"
+                          >
+                            -
+                          </button>
+                          <span className="px-2 font-mono font-bold text-white text-xs">
+                            {v.unitsInStock ?? (v.inStock ? 10 : 0)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const cur = v.unitsInStock ?? 10;
+                              handleUpdateVariantStock(v, true);
+                            }}
+                            className="w-6 h-6 rounded bg-neutral-800 hover:bg-neutral-700 text-white font-bold flex items-center justify-center text-xs"
+                          >
+                            +
+                          </button>
+                        </div>
+
+                        {/* Stock Toggle */}
                         <button
                           type="button"
-                          onClick={() => {
-                            const cur = v.unitsInStock ?? 10;
-                            const next = Math.max(0, cur - 1);
-                            handleUpdateVariantStock(v, next > 0);
-                          }}
-                          className="w-6 h-6 rounded bg-neutral-800 hover:bg-neutral-700 text-white font-bold flex items-center justify-center text-xs"
+                          onClick={() => handleUpdateVariantStock(v, !v.inStock)}
+                          className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition ${
+                            v.inStock
+                              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/30'
+                              : 'bg-red-500/20 text-red-300 border-red-500/30 hover:bg-red-500/30'
+                          }`}
                         >
-                          -
+                          {v.inStock ? 'In Stock' : 'Out of Stock'}
                         </button>
-                        <span className="px-2 font-mono font-bold text-white text-xs">
-                          {v.unitsInStock ?? (v.inStock ? 10 : 0)}
-                        </span>
+
+                        {/* 3D Model Badge */}
+                        {v.glbPath ? (
+                          <span className="px-2 py-0.5 bg-purple-900/40 text-purple-300 border border-purple-800 rounded text-[10px] font-bold">
+                            3D Model Attached
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 bg-neutral-800 text-neutral-400 rounded text-[10px]">
+                            No 3D Model
+                          </span>
+                        )}
+
+                        {/* Delete Variant */}
                         <button
                           type="button"
-                          onClick={() => {
-                            const cur = v.unitsInStock ?? 10;
-                            handleUpdateVariantStock(v, true);
-                          }}
-                          className="w-6 h-6 rounded bg-neutral-800 hover:bg-neutral-700 text-white font-bold flex items-center justify-center text-xs"
+                          onClick={() => handleDeleteVariant(v.id, v.colorName)}
+                          className="p-1.5 text-neutral-500 hover:text-red-400 transition"
+                          title="Delete variant"
                         >
-                          +
+                          <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
-
-                      {/* Stock Toggle */}
-                      <button
-                        type="button"
-                        onClick={() => handleUpdateVariantStock(v, !v.inStock)}
-                        className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition ${
-                          v.inStock
-                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/30'
-                            : 'bg-red-500/20 text-red-300 border-red-500/30 hover:bg-red-500/30'
-                        }`}
-                      >
-                        {v.inStock ? 'In Stock' : 'Out of Stock'}
-                      </button>
-
-                      {/* 3D Model Badge */}
-                      {v.glbPath ? (
-                        <span className="px-2 py-0.5 bg-purple-900/40 text-purple-300 border border-purple-800 rounded text-[10px] font-bold">
-                          3D Model Attached
-                        </span>
-                      ) : (
-                        <span className="px-2 py-0.5 bg-neutral-800 text-neutral-400 rounded text-[10px]">
-                          No 3D Model
-                        </span>
-                      )}
-
-                      {/* Delete Variant */}
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteVariant(v.id, v.colorName)}
-                        className="p-1.5 text-neutral-500 hover:text-red-400 transition"
-                        title="Delete variant"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
                     </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Add New Variant Form */}
-            <form
-              onSubmit={handleAddVariant}
-              className="p-4 bg-neutral-950 rounded-2xl border border-neutral-800 space-y-4 text-xs"
-            >
-              <div className="flex items-center gap-2">
-                <Plus className="w-4 h-4 text-brand-400" />
-                <span className="font-bold text-white text-xs">Add New Color Variant</span>
+                  ))}
+                </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                <div className="space-y-1">
-                  <label className="text-neutral-400">Color Name *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Matte Tortoise"
-                    value={newVariantData.colorName || ''}
-                    onChange={(e) =>
-                      setNewVariantData({ ...newVariantData, colorName: e.target.value })
-                    }
-                    className="w-full px-3 py-2 bg-neutral-900 border border-neutral-700 rounded-xl text-white"
-                  />
+              {/* Add New Variant Form */}
+              <form
+                onSubmit={handleAddVariant}
+                className="p-4 bg-neutral-950 rounded-2xl border border-neutral-800 space-y-4 text-xs"
+              >
+                <div className="flex items-center gap-2">
+                  <Plus className="w-4 h-4 text-brand-400" />
+                  <span className="font-bold text-white text-xs">Add New Color Variant</span>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-neutral-400">Color Hex Code</label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="color"
-                      value={newVariantData.colorHex || '#000000'}
-                      onChange={(e) =>
-                        setNewVariantData({ ...newVariantData, colorHex: e.target.value })
-                      }
-                      className="w-9 h-9 rounded-lg bg-neutral-900 border border-neutral-700 cursor-pointer p-0.5"
-                    />
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-neutral-400">Color Name *</label>
                     <input
                       type="text"
-                      placeholder="#4A3728"
-                      value={newVariantData.colorHex || ''}
+                      required
+                      placeholder="e.g. Matte Tortoise"
+                      value={newVariantData.colorName || ''}
                       onChange={(e) =>
-                        setNewVariantData({ ...newVariantData, colorHex: e.target.value })
+                        setNewVariantData({ ...newVariantData, colorName: e.target.value })
+                      }
+                      className="w-full px-3 py-2 bg-neutral-900 border border-neutral-700 rounded-xl text-white"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-neutral-400">Color Hex Code</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={newVariantData.colorHex || '#000000'}
+                        onChange={(e) =>
+                          setNewVariantData({ ...newVariantData, colorHex: e.target.value })
+                        }
+                        className="w-9 h-9 rounded-lg bg-neutral-900 border border-neutral-700 cursor-pointer p-0.5"
+                      />
+                      <input
+                        type="text"
+                        placeholder="#4A3728"
+                        value={newVariantData.colorHex || ''}
+                        onChange={(e) =>
+                          setNewVariantData({ ...newVariantData, colorHex: e.target.value })
+                        }
+                        className="w-full px-3 py-2 bg-neutral-900 border border-neutral-700 rounded-xl text-white font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-neutral-400">Units in Stock (Qty) *</label>
+                    <input
+                      type="number"
+                      min="0"
+                      required
+                      placeholder="e.g. 15"
+                      value={newVariantData.unitsInStock ?? 10}
+                      onChange={(e) =>
+                        setNewVariantData({
+                          ...newVariantData,
+                          unitsInStock: Math.max(0, parseInt(e.target.value, 10) || 0),
+                          inStock: (parseInt(e.target.value, 10) || 0) > 0,
+                        })
                       }
                       className="w-full px-3 py-2 bg-neutral-900 border border-neutral-700 rounded-xl text-white font-mono"
                     />
                   </div>
+
+                  <div className="space-y-1">
+                    <label className="text-neutral-400">Price Override (Optional ₦)</label>
+                    <input
+                      type="number"
+                      placeholder="Inherits base price"
+                      value={newVariantData.priceOverride || ''}
+                      onChange={(e) =>
+                        setNewVariantData({
+                          ...newVariantData,
+                          priceOverride: e.target.value ? Number(e.target.value) : undefined,
+                        })
+                      }
+                      className="w-full px-3 py-2 bg-neutral-900 border border-neutral-700 rounded-xl text-white"
+                    />
+                  </div>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-neutral-400">Units in Stock (Qty) *</label>
-                  <input
-                    type="number"
-                    min="0"
-                    required
-                    placeholder="e.g. 15"
-                    value={newVariantData.unitsInStock ?? 10}
-                    onChange={(e) =>
-                      setNewVariantData({
-                        ...newVariantData,
-                        unitsInStock: Math.max(0, parseInt(e.target.value, 10) || 0),
-                        inStock: (parseInt(e.target.value, 10) || 0) > 0,
-                      })
-                    }
-                    className="w-full px-3 py-2 bg-neutral-900 border border-neutral-700 rounded-xl text-white font-mono"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-neutral-400">Price Override (Optional ₦)</label>
-                  <input
-                    type="number"
-                    placeholder="Inherits base price"
-                    value={newVariantData.priceOverride || ''}
-                    onChange={(e) =>
-                      setNewVariantData({
-                        ...newVariantData,
-                        priceOverride: e.target.value ? Number(e.target.value) : undefined,
-                      })
-                    }
-                    className="w-full px-3 py-2 bg-neutral-900 border border-neutral-700 rounded-xl text-white"
-                  />
-                </div>
-              </div>
-
-              {/* 3D Model Uploader */}
-              <div className="space-y-2 p-3 bg-neutral-900/60 rounded-xl border border-neutral-800">
-                <label className="text-neutral-300 font-semibold flex items-center justify-between">
-                  <span>3D GLB Model (for AR Virtual Try-On)</span>
-                  {isUploadingGlb && (
-                    <span className="text-brand-400 text-[10px] flex items-center gap-1">
-                      <div className="w-2.5 h-2.5 border-2 border-brand-400 border-t-transparent rounded-full animate-spin" />
-                      Uploading 3D Model...
-                    </span>
-                  )}
-                </label>
-
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                  <input
-                    type="text"
-                    placeholder="/models/glasses.glb"
-                    value={newVariantData.glbPath || ''}
-                    onChange={(e) =>
-                      setNewVariantData({ ...newVariantData, glbPath: e.target.value })
-                    }
-                    className="flex-1 px-3 py-2 bg-neutral-950 border border-neutral-700 rounded-xl text-white font-mono text-[11px]"
-                  />
-
-                  <label className="px-3.5 py-2 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition flex-shrink-0 active:scale-95">
-                    {isGeneratingGlb ? (
-                      <>
-                        <div className="w-3.5 h-3.5 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
-                        <span>Converting...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-                        <span>📸 Image ➔ 3D GLB</span>
-                      </>
+                {/* 3D Model Uploader */}
+                <div className="space-y-2 p-3 bg-neutral-900/60 rounded-xl border border-neutral-800">
+                  <label className="text-neutral-300 font-semibold flex items-center justify-between">
+                    <span>3D GLB Model (for AR Virtual Try-On)</span>
+                    {isUploadingGlb && (
+                      <span className="text-brand-400 text-[10px] flex items-center gap-1">
+                        <div className="w-2.5 h-2.5 border-2 border-brand-400 border-t-transparent rounded-full animate-spin" />
+                        Processing 3D Model...
+                      </span>
                     )}
+                  </label>
+
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                     <input
-                      type="file"
-                      accept="image/png,image/jpeg,image/webp"
-                      className="hidden"
+                      type="text"
+                      placeholder="/models/glasses.glb"
+                      value={newVariantData.glbPath || ''}
+                      onChange={(e) =>
+                        setNewVariantData({ ...newVariantData, glbPath: e.target.value })
+                      }
+                      className="flex-1 px-3 py-2 bg-neutral-950 border border-neutral-700 rounded-xl text-white font-mono text-[11px]"
+                    />
+
+                    <label className="px-3.5 py-2 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition flex-shrink-0 active:scale-95">
+                      {isGeneratingGlb ? (
+                        <>
+                          <div className="w-3.5 h-3.5 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
+                          <span>Converting...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>📸 Image ➔ 3D GLB</span>
+                        </>
+                      )}
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        className="hidden"
+                        disabled={isGeneratingGlb || isUploadingGlb}
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) handleConvertImageToGlb(f);
+                        }}
+                      />
+                    </label>
+
+                    <button
+                      type="button"
+                      onClick={handleGenerateGlbModel}
                       disabled={isGeneratingGlb || isUploadingGlb}
-                      onChange={(e) => {
-                        const f = e.target.files?.[0];
-                        if (f) handleConvertImageToGlb(f);
-                      }}
-                    />
-                  </label>
+                      className="px-3.5 py-2 bg-brand-600/20 hover:bg-brand-600/30 text-brand-300 border border-brand-500/30 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition flex-shrink-0 active:scale-95 disabled:opacity-50"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-brand-400" />
+                      <span>✨ Parametric 3D</span>
+                    </button>
 
-                  <button
-                    type="button"
-                    onClick={handleGenerateGlbModel}
-                    disabled={isGeneratingGlb || isUploadingGlb}
-                    className="px-3.5 py-2 bg-brand-600/20 hover:bg-brand-600/30 text-brand-300 border border-brand-500/30 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition flex-shrink-0 active:scale-95 disabled:opacity-50"
-                  >
-                    <Sparkles className="w-3.5 h-3.5 text-brand-400" />
-                    <span>✨ Parametric 3D</span>
-                  </button>
-
-                  <label className="px-3.5 py-2 bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition flex-shrink-0">
-                    <Sparkles className="w-3.5 h-3.5" />
-                    <span>Upload .glb</span>
-                    <input
-                      type="file"
-                      accept=".glb"
-                      className="hidden"
-                      disabled={isUploadingGlb || isGeneratingGlb}
-                      onChange={(e) => {
-                        const f = e.target.files?.[0];
-                        if (f) handleGlbFileUpload(f);
-                      }}
-                    />
-                  </label>
+                    <label className="px-3.5 py-2 bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition flex-shrink-0">
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>Upload .glb</span>
+                      <input
+                        type="file"
+                        accept=".glb"
+                        className="hidden"
+                        disabled={isUploadingGlb || isGeneratingGlb}
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) handleGlbFileUpload(f);
+                        }}
+                      />
+                    </label>
+                  </div>
+                  <p className="text-[10px] text-neutral-500">
+                    Select <b>📸 Image ➔ 3D GLB</b> to convert any front photo of glasses into a clipped 3D model, or click <b>Parametric 3D</b> to generate from specs.
+                  </p>
                 </div>
-                <p className="text-[10px] text-neutral-500">
-                  Select <b>📸 Image ➔ 3D GLB</b> to convert any front photo of glasses into a clipped 3D model, or click <b>Parametric 3D</b> to generate from specs.
-                </p>
-              </div>
 
-              <div className="flex justify-end pt-2">
-                <button
-                  type="submit"
-                  disabled={isSavingVariant || isUploadingGlb}
-                  className="px-5 py-2 bg-brand-600 hover:bg-brand-500 disabled:bg-neutral-800 text-white rounded-xl font-bold transition flex items-center gap-1.5 shadow-md"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Add Variant</span>
-                </button>
-              </div>
-            </form>
+                <div className="flex justify-end pt-2">
+                  <button
+                    type="submit"
+                    disabled={isSavingVariant || isUploadingGlb || isGeneratingGlb}
+                    className="px-5 py-2 bg-brand-600 hover:bg-brand-500 disabled:bg-neutral-800 text-white rounded-xl font-bold transition flex items-center gap-1.5 shadow-md"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Variant</span>
+                  </button>
+                </div>
+              </form>
+            </div>
 
-            <div className="flex justify-end pt-2 border-t border-neutral-800">
+            {/* Sticky Footer */}
+            <div className="p-4 sm:p-5 border-t border-neutral-800 bg-neutral-950 flex items-center justify-between flex-shrink-0">
+              <span className="text-xs text-neutral-400">
+                {managingVariantsProduct.variants.length} colorway(s) configured
+              </span>
               <button
                 type="button"
-                onClick={() => setManagingVariantsProduct(null)}
-                className="px-6 py-2.5 bg-neutral-800 hover:bg-neutral-700 text-white rounded-xl font-bold transition text-xs shadow-md"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setManagingVariantsProduct(null);
+                }}
+                className="px-6 py-2 bg-neutral-800 hover:bg-neutral-700 text-white rounded-xl font-bold transition text-xs shadow-md"
               >
-                Done
+                Close Manager
               </button>
             </div>
           </div>

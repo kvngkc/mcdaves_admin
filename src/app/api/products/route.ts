@@ -138,18 +138,44 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     const productRow = mapProductToRow(body.product);
     const { data: createdProduct, error } = await supabase.from('products').insert(productRow).select().single();
-    if (error) throw error;
+    if (error) {
+      console.error('[Create Product] DB Insert Error:', error);
+      throw error;
+    }
+
+    // Provision Initial Default Variant in product_variants so the product is immediately usable
+    const initialVariant = {
+      id: `var-${createdProduct.id}-standard-${Date.now().toString().slice(-4)}`,
+      product_id: createdProduct.id,
+      slug: 'standard',
+      name: `${createdProduct.name} - Standard`,
+      sku: `${createdProduct.slug.slice(0, 3).toUpperCase()}-STD-${Date.now().toString().slice(-3)}`,
+      color_name: 'Classic Black',
+      color_hex: '#1A1A1A',
+      in_stock: true,
+      stock_level: 'high',
+      units_in_stock: 20,
+      hide_when_out_of_stock: false,
+      sort_order: 0,
+      status: 'ACTIVE',
+      updated_at: new Date().toISOString(),
+    };
+
+    const { error: varInsertErr } = await supabase.from('product_variants').insert(initialVariant);
+    if (varInsertErr) {
+      console.warn('[Create Product] Variant Provision Warning:', varInsertErr);
+    }
 
     // Handle media if provided
     if (Array.isArray(body.product.media) && body.product.media.length > 0) {
       const mediaRows = body.product.media.map((m: any, idx: number) => ({
         id: `med-${createdProduct.id}-${idx}-${Date.now().toString().slice(-3)}`,
         product_id: createdProduct.id,
-        type: m.mediaType?.replace('image_', '') || 'front',
+        type: (m.mediaType || 'front').replace('image_', ''),
         url: m.url,
         alt_text: m.altText || createdProduct.name,
         is_primary: m.isPrimary ?? (idx === 0),
-        sortOrder: m.sortOrder ?? idx,
+        sort_order: m.sortOrder ?? idx,
       }));
 
       await supabase.from('product_media').insert(mediaRows);
@@ -158,6 +184,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ success: true, product: mapRowToProduct(createdProduct) }, { status: 201 });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error creating catalog item';
+    console.error('[/api/products POST]', err);
     return NextResponse.json({ error: msg }, { status: 400 });
   }
 }
@@ -245,6 +272,10 @@ export async function DELETE(req: NextRequest): Promise<NextResponse> {
       if (error) throw error;
       return NextResponse.json({ success: true, message: 'Variant deleted' }, { status: 200 });
     }
+
+    // Cascade delete media and variants first
+    await supabase.from('product_media').delete().eq('product_id', id);
+    await supabase.from('product_variants').delete().eq('product_id', id);
 
     const { error } = await supabase.from('products').delete().eq('id', id);
     if (error) throw error;

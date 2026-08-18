@@ -40,29 +40,36 @@ export function mapRowToProduct(row: any): Product {
   };
 }
 
-export function mapProductToRow(product: Product): any {
+export function mapProductToRow(product: Partial<Product>): any {
+  const specs = product.defaultSpecifications || {
+    frameWidthMm: 140,
+    lensWidthMm: 52,
+    bridgeWidthMm: 18,
+    templeLengthMm: 140,
+    frameSize: '52□18-140',
+  };
+
   return {
-    id: product.id,
-    slug: product.slug,
-    name: product.name,
-    collection: product.collection,
-    category: product.category,
-    description: product.description,
-    features: product.features,
-    face_shape: product.faceShape,
-    default_price: product.defaultPrice,
-    default_original_price: product.defaultOriginalPrice,
-    default_material: product.defaultMaterial,
-    default_weight: product.defaultWeight,
-    frame_width_mm: product.defaultSpecifications.frameWidthMm,
-    lens_width_mm: product.defaultSpecifications.lensWidthMm,
-    bridge_width_mm: product.defaultSpecifications.bridgeWidthMm,
-    temple_length_mm: product.defaultSpecifications.templeLengthMm,
-    frame_size: product.defaultSpecifications.frameSize,
-    prescription_required: product.prescriptionRequired,
-    try_on_available: product.tryOnAvailable,
-    hide_when_out_of_stock: product.hideWhenOutOfStock ?? true,
-    status: product.status,
+    id: product.id || `prod-${Date.now()}`,
+    slug: product.slug || `frame-${Date.now()}`,
+    name: product.name || 'Unnamed Frame',
+    collection: product.collection || 'sightly',
+    category: product.category || 'unisex',
+    description: product.description || '',
+    features: Array.isArray(product.features) ? product.features : [],
+    face_shape: Array.isArray(product.faceShape) ? product.faceShape : ['round', 'oval'],
+    default_price: Number(product.defaultPrice) || 35000,
+    default_original_price: product.defaultOriginalPrice ? Number(product.defaultOriginalPrice) : null,
+    default_material: product.defaultMaterial || 'Acetate',
+    default_weight: product.defaultWeight || '22g',
+    frame_width_mm: Number(specs.frameWidthMm) || 140,
+    lens_width_mm: Number(specs.lensWidthMm) || 52,
+    bridge_width_mm: Number(specs.bridgeWidthMm) || 18,
+    temple_length_mm: Number(specs.templeLengthMm) || 140,
+    frame_size: specs.frameSize || `${Number(specs.lensWidthMm) || 52}□${Number(specs.bridgeWidthMm) || 18}-${Number(specs.templeLengthMm) || 140}`,
+    prescription_required: product.prescriptionRequired ?? true,
+    try_on_available: product.tryOnAvailable ?? true,
+    status: product.status || 'ACTIVE',
     updated_at: new Date().toISOString(),
   };
 }
@@ -94,28 +101,28 @@ export function mapRowToVariant(row: any): ProductVariant {
   };
 }
 
-export function mapVariantToRow(variant: ProductVariant): any {
+export function mapVariantToRow(variant: Partial<ProductVariant>): any {
   return {
-    id: variant.id,
+    id: variant.id || `var-${Date.now()}`,
     product_id: variant.productId,
-    slug: variant.slug,
-    name: variant.name,
-    sku: variant.sku,
-    color_name: variant.colorName,
-    color_hex: variant.colorHex,
-    price_override: variant.priceOverride,
-    original_price_override: variant.originalPriceOverride,
-    material_override: variant.materialOverride,
-    weight_override: variant.weightOverride,
-    specifications_override: variant.specificationsOverride,
-    description_override: variant.descriptionOverride,
-    glb_path: variant.glbPath,
-    in_stock: variant.inStock,
-    stock_level: variant.stockLevel,
-    units_in_stock: variant.unitsInStock,
-    hide_when_out_of_stock: variant.hideWhenOutOfStock,
-    sort_order: variant.sortOrder,
-    status: variant.status,
+    slug: variant.slug || 'standard',
+    name: variant.name || 'Standard Variant',
+    sku: variant.sku || `SKU-${Date.now().toString().slice(-4)}`,
+    color_name: variant.colorName || 'Standard',
+    color_hex: variant.colorHex || '#000000',
+    price_override: variant.priceOverride ? Number(variant.priceOverride) : null,
+    original_price_override: variant.originalPriceOverride ? Number(variant.originalPriceOverride) : null,
+    material_override: variant.materialOverride || null,
+    weight_override: variant.weightOverride || null,
+    specifications_override: variant.specificationsOverride || null,
+    description_override: variant.descriptionOverride || null,
+    glb_path: variant.glbPath || null,
+    in_stock: variant.inStock ?? true,
+    stock_level: variant.stockLevel || 'high',
+    units_in_stock: Number(variant.unitsInStock) ?? 20,
+    hide_when_out_of_stock: variant.hideWhenOutOfStock ?? false,
+    sort_order: Number(variant.sortOrder) || 0,
+    status: variant.status || 'ACTIVE',
     updated_at: new Date().toISOString(),
   };
 }

@@ -177,14 +177,9 @@ export async function convertImageTo3DGlb(
   frameGeometry.computeVertexNormals();
 
   // ─── 2. TEXTURE & MATERIAL SETUP ──────────────────────────────────────────
-  // Load texture data URI
-  const textureDataUri = `data:image/webp;base64,${textureWebpBuffer.toString('base64')}`;
-  const textureLoader = new THREE.TextureLoader();
-  const frontTexture = textureLoader.load(textureDataUri);
-  frontTexture.flipY = false;
-
   const frameMaterial = new THREE.MeshStandardMaterial({
-    map: frontTexture,
+    name: 'ExtrudedFrameMaterial',
+    color: new THREE.Color('#ffffff'),
     roughness: 0.3,
     metalness: options.materialType === 'metal' ? 0.75 : 0.1,
     side: THREE.DoubleSide,
@@ -196,6 +191,7 @@ export async function convertImageTo3DGlb(
 
   // ─── 3. TRANSPARENT OPTICAL GLASS LENSES ──────────────────────────────────
   const lensMaterial = new THREE.MeshPhysicalMaterial({
+    name: 'GlassLensMaterial',
     color: new THREE.Color('#e8f2ff'),
     transparent: true,
     opacity: 0.25,
@@ -242,7 +238,7 @@ export async function convertImageTo3DGlb(
   leftStub.rotation.y = 0.08;
   rootGroup.add(leftStub);
 
-  // ─── 5. EXPORT TO GLB & COMPRESS ──────────────────────────────────────────
+  // ─── 5. EXPORT TO GLB & EMBED WEBP TEXTURE IN NODE.JS ─────────────────────
   const exporter = new GLTFExporter();
   const glbArrayBuffer = await new Promise<ArrayBuffer>((resolve, reject) => {
     exporter.parse(
@@ -261,7 +257,30 @@ export async function convertImageTo3DGlb(
   });
 
   const rawBuffer = Buffer.from(glbArrayBuffer);
-  return optimizeGlbBuffer(rawBuffer, { maxTextureDimension: 1024, textureQuality: 85 });
+
+  // Embed WebP texture natively via NodeIO (100% Node.js native, no browser canvas needed)
+  try {
+    const { NodeIO } = await import('@gltf-transform/core');
+    const io = new NodeIO();
+    const doc = await io.readBinary(rawBuffer);
+
+    const texture = doc.createTexture('frameWebpTexture')
+      .setImage(textureWebpBuffer)
+      .setMimeType('image/webp');
+
+    const mat = doc.getRoot().listMaterials().find((m) => m.getName() === 'ExtrudedFrameMaterial');
+    if (mat) {
+      mat.setBaseColorTexture(texture);
+      mat.setRoughnessFactor(0.3);
+      mat.setMetallicFactor(options.materialType === 'metal' ? 0.75 : 0.1);
+    }
+
+    const texturedGlbBuffer = Buffer.from(await io.writeBinary(doc));
+    return optimizeGlbBuffer(texturedGlbBuffer, { maxTextureDimension: 1024, textureQuality: 85 });
+  } catch (texErr) {
+    console.warn('[ImageTo3D] Notice embedding texture via NodeIO, falling back to base buffer:', texErr);
+    return optimizeGlbBuffer(rawBuffer, { maxTextureDimension: 1024, textureQuality: 85 });
+  }
 }
 
 function applyFaceWrapToPlane(geom: THREE.PlaneGeometry, radiusMm: number, xCenterOffset: number): void {
