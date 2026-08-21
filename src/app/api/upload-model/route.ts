@@ -9,7 +9,7 @@ const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024; // 50MB
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
-    const auth = requireAdminSession(request);
+    const auth = await requireAdminSession(request);
     if (!auth.authorized) {
       return NextResponse.json({ error: auth.error || 'Unauthorized' }, { status: 401 });
     }

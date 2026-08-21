@@ -1,4 +1,5 @@
 'use client';
+import { apiFetch } from '@/lib/api-client';
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { Search, RefreshCw, Copy, Check, CreditCard, Users, CheckCircle2, AlertCircle } from 'lucide-react';
@@ -34,7 +35,7 @@ export default function IntentsPage() {
       if (intentStatusFilter !== 'ALL') url.searchParams.set('status', intentStatusFilter);
       if (intentSearch) url.searchParams.set('search', intentSearch);
 
-      const res = await fetch(url.toString());
+      const res = await apiFetch(url.toString());
       if (res.ok) {
         const data = await res.json();
         setIntents(data.intents || []);
@@ -52,7 +53,7 @@ export default function IntentsPage() {
 
   const handleUpdateIntentStatus = async (id: string, newStatus: OrderIntentStatus) => {
     try {
-      const res = await fetch(`/api/order-intents/${id}`, {
+      const res = await apiFetch(`/api/order-intents/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
@@ -69,7 +70,7 @@ export default function IntentsPage() {
   const handleGeneratePaymentLink = async (intentId: string) => {
     setGeneratingLinkFor(intentId);
     try {
-      const res = await fetch(`/api/order-intents/${intentId}`, {
+      const res = await apiFetch(`/api/order-intents/${intentId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ generatePaymentLink: true }),

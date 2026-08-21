@@ -1,63 +1,71 @@
 // src/lib/auth/admin-auth.ts
 import crypto from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
+import { supabase } from '@/lib/supabase/service';
 
-const ADMIN_PASSKEY = process.env.ADMIN_PASSKEY || 'mcdaves-admin-secure-pass';
-const ADMIN_SESSION_SECRET = process.env.ADMIN_SESSION_SECRET || 'mcdaves-optical-secure-server-signing-key-2026';
-export const ADMIN_COOKIE_NAME = 'mcdaves_admin_session';
+export const ADMIN_COOKIE_NAME = 'mcdaves_sb_access_token';
+export const ADMIN_CSRF_COOKIE = 'mcdaves_admin_csrf';
 
-export function createAdminSessionToken(): string {
-  const expiresAt = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
-  const payload = `admin:${expiresAt}`;
-  const signature = crypto
-    .createHmac('sha256', ADMIN_SESSION_SECRET)
-    .update(payload)
-    .digest('hex');
-  return `${payload}:${signature}`;
+/**
+ * Generates a random CSRF token
+ */
+export function generateCsrfToken(): string {
+  return crypto.randomBytes(32).toString('hex');
 }
 
-export function verifyAdminSessionToken(token: string | undefined): boolean {
-  if (!token) return false;
+/**
+ * Verifies that the CSRF token in the request header matches the cookie
+ */
+export function verifyCsrfToken(req: NextRequest): boolean {
+  // Allow safe methods
+  if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') {
+    return true;
+  }
+
+  const csrfCookie = req.cookies.get(ADMIN_CSRF_COOKIE)?.value;
+  const csrfHeader = req.headers.get('x-csrf-token');
+
+  if (!csrfCookie || !csrfHeader) return false;
+  
   try {
-    const parts = token.split(':');
-    if (parts.length !== 3) return false;
-    const [role, expiresAtStr, signature] = parts;
-    if (role !== 'admin') return false;
-
-    const expiresAt = parseInt(expiresAtStr, 10);
-    if (isNaN(expiresAt) || Date.now() > expiresAt) return false;
-
-    const expectedPayload = `${role}:${expiresAtStr}`;
-    const expectedSignature = crypto
-      .createHmac('sha256', ADMIN_SESSION_SECRET)
-      .update(expectedPayload)
-      .digest('hex');
-
     return crypto.timingSafeEqual(
-      Buffer.from(signature, 'hex'),
-      Buffer.from(expectedSignature, 'hex'),
+      Buffer.from(csrfCookie),
+      Buffer.from(csrfHeader)
     );
   } catch {
     return false;
   }
 }
 
-export function verifyAdminPasskey(attempt: string): boolean {
-  if (!attempt || !ADMIN_PASSKEY) return false;
-  try {
-    const a = Buffer.from(attempt.trim());
-    const b = Buffer.from(ADMIN_PASSKEY.trim());
-    if (a.length !== b.length) return false;
-    return crypto.timingSafeEqual(a, b);
-  } catch {
-    return false;
+/**
+ * Checks if the request contains a valid Supabase access token for an admin user
+ */
+export async function requireAdminSession(req: NextRequest): Promise<{ authorized: boolean; error?: string }> {
+  // 1. Verify CSRF for mutating requests
+  if (!verifyCsrfToken(req)) {
+    return { authorized: false, error: 'CSRF token missing or invalid' };
   }
-}
 
-export function requireAdminSession(request: NextRequest): { authorized: boolean; error?: string } {
-  const cookie = request.cookies.get(ADMIN_COOKIE_NAME);
-  if (!cookie || !verifyAdminSessionToken(cookie.value)) {
-    return { authorized: false, error: 'Unauthorized: Administrator authentication required.' };
+  // 2. Verify Session
+  const token = req.cookies.get(ADMIN_COOKIE_NAME)?.value;
+  if (!token) {
+    return { authorized: false, error: 'Unauthorized: No session token found.' };
   }
+
+  if (!supabase) {
+    return { authorized: false, error: 'Internal Server Error: Database client missing' };
+  }
+
+  const { data, error } = await supabase.auth.getUser(token);
+  
+  if (error || !data.user) {
+    return { authorized: false, error: 'Unauthorized: Invalid or expired session.' };
+  }
+
+  // Ensure they are an admin
+  if (data.user.user_metadata?.role !== 'admin') {
+    return { authorized: false, error: 'Forbidden: Admin role required.' };
+  }
+
   return { authorized: true };
 }

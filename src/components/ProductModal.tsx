@@ -1,4 +1,5 @@
 'use client';
+import { apiFetch } from '@/lib/api-client';
 
 import React, { useState, useEffect } from 'react';
 import { Package, X, Upload, AlertCircle } from 'lucide-react';
@@ -65,7 +66,7 @@ export default function ProductModal({ isOpen, onClose, product, onSuccess, onEr
       formData.append('file', file);
       formData.append('imageType', imageType);
 
-      const res = await fetch('/api/upload-image', {
+      const res = await apiFetch('/api/upload-image', {
         method: 'POST',
         body: formData,
       });
@@ -141,7 +142,7 @@ export default function ProductModal({ isOpen, onClose, product, onSuccess, onEr
 
     try {
       if (isCreatingProduct) {
-        const res = await fetch('/api/products', {
+        const res = await apiFetch('/api/products', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ product: payload }),
@@ -154,7 +155,7 @@ export default function ProductModal({ isOpen, onClose, product, onSuccess, onEr
           onError(data.error || 'Failed to create product');
         }
       } else if (product) {
-        const res = await fetch('/api/products', {
+        const res = await apiFetch('/api/products', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ product: { ...payload, id: product.id } }),

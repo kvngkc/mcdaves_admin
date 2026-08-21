@@ -10,7 +10,7 @@ const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/avif
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
-    const auth = requireAdminSession(request);
+    const auth = await requireAdminSession(request);
     if (!auth.authorized) {
       return NextResponse.json({ error: auth.error || 'Unauthorized' }, { status: 401 });
     }

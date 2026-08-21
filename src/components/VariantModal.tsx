@@ -1,4 +1,5 @@
 'use client';
+import { apiFetch } from '@/lib/api-client';
 
 import React, { useState } from 'react';
 import { Palette, X, Plus, Sparkles, Trash2 } from 'lucide-react';
@@ -43,7 +44,7 @@ export default function VariantModal({ isOpen, onClose, product, onSuccess, onEr
       const formData = new FormData();
       formData.append('file', file);
 
-      const res = await fetch('/api/upload-model', {
+      const res = await apiFetch('/api/upload-model', {
         method: 'POST',
         body: formData,
       });
@@ -69,7 +70,7 @@ export default function VariantModal({ isOpen, onClose, product, onSuccess, onEr
   const handleGenerateGlbModel = async () => {
     setIsGeneratingGlb(true);
     try {
-      const res = await fetch('/api/generate-model', {
+      const res = await apiFetch('/api/generate-model', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -113,7 +114,7 @@ export default function VariantModal({ isOpen, onClose, product, onSuccess, onEr
         String(product.defaultSpecifications?.frameWidthMm || 140),
       );
 
-      const res = await fetch('/api/generate-model', {
+      const res = await apiFetch('/api/generate-model', {
         method: 'POST',
         body: formData,
       });
@@ -172,7 +173,7 @@ export default function VariantModal({ isOpen, onClose, product, onSuccess, onEr
     setIsSavingVariant(true);
 
     try {
-      const res = await fetch('/api/products', {
+      const res = await apiFetch('/api/products', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'CREATE_VARIANT', variant: variantPayload }),
@@ -204,7 +205,7 @@ export default function VariantModal({ isOpen, onClose, product, onSuccess, onEr
 
   const handleUpdateVariantStock = async (variant: ProductVariant, inStock: boolean) => {
     try {
-      const res = await fetch('/api/products', {
+      const res = await apiFetch('/api/products', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -224,7 +225,7 @@ export default function VariantModal({ isOpen, onClose, product, onSuccess, onEr
     if (!confirm(`Delete variant "${colorName}"?`)) return;
 
     try {
-      const res = await fetch(`/api/products?type=variant&id=${variantId}`, {
+      const res = await apiFetch(`/api/products?type=variant&id=${variantId}`, {
         method: 'DELETE',
       });
       if (res.ok) {

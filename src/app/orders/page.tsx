@@ -1,4 +1,5 @@
 'use client';
+import { apiFetch } from '@/lib/api-client';
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { Search, RefreshCw, ShoppingBag, CheckCircle2, AlertCircle } from 'lucide-react';
@@ -30,7 +31,7 @@ export default function OrdersPage() {
       const url = new URL('/api/orders', window.location.origin);
       if (orderSearch) url.searchParams.set('search', orderSearch);
 
-      const res = await fetch(url.toString());
+      const res = await apiFetch(url.toString());
       if (res.ok) {
         const data = await res.json();
         setOrders(data.orders || []);

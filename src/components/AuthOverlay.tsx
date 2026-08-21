@@ -1,4 +1,5 @@
 'use client';
+import { apiFetch } from '@/lib/api-client';
 
 import React, { useState, useEffect } from 'react';
 import { ShieldCheck, Loader2 } from 'lucide-react';
@@ -18,7 +19,7 @@ export default function AuthOverlay({ children }: AuthOverlayProps) {
   useEffect(() => {
     async function verifySession() {
       try {
-        const res = await fetch('/api/auth/session');
+        const res = await apiFetch('/api/auth/session');
         if (res.ok) {
           const data = await res.json();
           if (data.authenticated) {
@@ -47,7 +48,7 @@ export default function AuthOverlay({ children }: AuthOverlayProps) {
     setAuthError(null);
 
     try {
-      const res = await fetch('/api/auth/login', {
+      const res = await apiFetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ passkey: passcode.trim() }),

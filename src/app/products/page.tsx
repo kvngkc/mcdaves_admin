@@ -1,4 +1,5 @@
 'use client';
+import { apiFetch } from '@/lib/api-client';
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { Search, Plus, Filter, Package, Palette, Trash2, Edit2, ExternalLink } from 'lucide-react';
@@ -28,7 +29,7 @@ export default function ProductsPage() {
   const loadProducts = useCallback(async () => {
     setIsLoadingProducts(true);
     try {
-      const res = await fetch('/api/products');
+      const res = await apiFetch('/api/products');
       if (res.ok) {
         const data = await res.json();
         const freshList: ResolvedProduct[] = data.products || [];
@@ -75,7 +76,7 @@ export default function ProductsPage() {
     setProducts((prev) => prev.filter((p) => p.id !== product.id));
 
     try {
-      const res = await fetch(`/api/products?id=${product.id}`, { method: 'DELETE' });
+      const res = await apiFetch(`/api/products?id=${product.id}`, { method: 'DELETE' });
       if (res.ok) {
         showToast(`Product "${product.name}" deleted`);
       } else {
