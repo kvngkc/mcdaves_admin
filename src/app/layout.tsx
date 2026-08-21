@@ -1,5 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import AuthOverlay from '@/components/AuthOverlay';
+import Sidebar from '@/components/Sidebar';
 
 export const metadata: Metadata = {
   title: 'McDaves Admin Console | iamadmin.mcdaves.com.ng',
@@ -17,8 +19,13 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="dark">
-      <body className="bg-neutral-950 text-neutral-100 min-h-screen antialiased selection:bg-brand-500 selection:text-white">
-        {children}
+      <body className="bg-neutral-950 text-neutral-100 min-h-screen antialiased selection:bg-brand-500 selection:text-white flex">
+        <AuthOverlay>
+          <Sidebar />
+          <main className="flex-1 min-w-0 overflow-y-auto">
+            {children}
+          </main>
+        </AuthOverlay>
       </body>
     </html>
   );
