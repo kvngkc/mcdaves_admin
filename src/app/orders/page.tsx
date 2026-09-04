@@ -113,8 +113,7 @@ export default function OrdersPage() {
               </div>
             </div>
           </div>
-
-      <div className="bg-neutral-900 rounded-3xl border border-neutral-800 overflow-hidden shadow-xl">
+        </div>      <div className="bg-neutral-900 rounded-3xl border border-neutral-800 overflow-hidden shadow-xl">
         {orders.length === 0 ? (
           <div className="p-12 text-center text-neutral-500 space-y-2">
             <ShoppingBag className="w-8 h-8 mx-auto text-neutral-600" />

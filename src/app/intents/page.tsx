@@ -189,8 +189,7 @@ export default function IntentsPage() {
           <span>Refresh</span>
         </button>
       </div>
-
-      <div className="bg-neutral-900 rounded-3xl border border-neutral-800 overflow-hidden shadow-xl">
+      </div>      <div className="bg-neutral-900 rounded-3xl border border-neutral-800 overflow-hidden shadow-xl">
         {intents.length === 0 ? (
           <div className="p-12 text-center text-neutral-500 space-y-2">
             <Users className="w-8 h-8 mx-auto text-neutral-600" />
