@@ -48,7 +48,7 @@ export default function OrdersPage() {
   }, [loadOrders]);
 
   return (
-    <div className="p-6 max-w-7xl w-full mx-auto space-y-6">
+    <div className="flex-1 flex flex-col min-h-screen bg-neutral-950 text-neutral-200">
       {/* Floating Feedback Toasts */}
       <div className="fixed top-5 right-5 z-50 space-y-2 max-w-sm pointer-events-none">
         {toasts.map((toast) => (
@@ -72,31 +72,47 @@ export default function OrdersPage() {
         ))}
       </div>
 
-      <div>
-        <h1 className="text-2xl font-black text-white mb-1">Confirmed Orders</h1>
-        <p className="text-neutral-400 text-sm">View completed and paid orders.</p>
-      </div>
-
-      <div className="flex items-center justify-between gap-4 bg-neutral-900 p-4 rounded-2xl border border-neutral-800">
-        <div className="relative w-full max-w-sm">
-          <Search className="w-4 h-4 text-neutral-500 absolute left-3 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            placeholder="Search by Order ID, Reference, Customer..."
-            value={orderSearch}
-            onChange={(e) => setOrderSearch(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 bg-neutral-950 border border-neutral-800 rounded-xl text-xs text-white focus:outline-none focus:border-brand-500"
-          />
+      <header className="sticky top-0 z-20 flex-shrink-0 px-4 sm:px-8 py-5 border-b border-neutral-800/60 bg-neutral-950/80 backdrop-blur-md">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 ml-12 lg:ml-0">
+          <div>
+            <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white flex items-center gap-2">
+              <ShoppingBag className="w-6 h-6 text-brand-500" />
+              Confirmed Orders
+            </h1>
+            <p className="text-xs text-neutral-500 mt-1 max-w-lg">
+              View completed and paid orders.
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={loadOrders}
+              disabled={isLoadingOrders}
+              className="flex items-center justify-center gap-2 p-2.5 sm:px-4 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800/60 rounded-xl text-neutral-300 transition-all active:scale-95 disabled:opacity-50"
+              title="Refresh Data"
+            >
+              <RefreshCw className={`w-4 h-4 ${isLoadingOrders ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline text-sm font-medium">Refresh</span>
+            </button>
+          </div>
         </div>
+      </header>
 
-        <button
-          onClick={() => loadOrders()}
-          className="px-3 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-xs font-semibold text-neutral-300 flex items-center gap-1.5 transition"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${isLoadingOrders ? 'animate-spin' : ''}`} />
-          <span>Refresh</span>
-        </button>
-      </div>
+      <main className="flex-1 p-4 sm:p-8 space-y-6 overflow-y-auto">
+        <div className="bg-neutral-900/50 border border-neutral-800/60 rounded-3xl p-4 sm:p-6 backdrop-blur-sm shadow-sm">
+          <div className="flex items-center justify-between gap-4 mb-6">
+            <div className="relative w-full sm:w-auto">
+              <div className="relative flex-1 sm:w-72">
+                <Search className="w-4 h-4 text-neutral-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Search by Order ID, Reference, Customer..."
+                  value={orderSearch}
+                  onChange={(e) => setOrderSearch(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 bg-neutral-950/50 border border-neutral-800 rounded-xl text-sm text-white focus:outline-none focus:border-brand-500 shadow-inner"
+                />
+              </div>
+            </div>
+          </div>
 
       <div className="bg-neutral-900 rounded-3xl border border-neutral-800 overflow-hidden shadow-xl">
         {orders.length === 0 ? (
@@ -119,30 +135,35 @@ export default function OrdersPage() {
               </thead>
               <tbody className="divide-y divide-neutral-800/60">
                 {orders.map((order) => (
-                  <tr key={order.id} className="hover:bg-neutral-800/40 transition">
+                  <tr key={order.id} className="hover:bg-neutral-800/30 transition-colors border-b border-neutral-800/50 group">
                     <td className="py-4 px-5">
                       <span className="font-bold text-white font-mono block text-sm">
-                        {order.id}
+                        {order.id.split('-')[0]}
                       </span>
                       <span className="text-[11px] text-neutral-400">
-                        {new Date(order.createdAt).toLocaleDateString('en-NG')}
+                        {new Date(order.createdAt).toLocaleDateString('en-GB', {
+                          day: 'numeric',
+                          month: 'short',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
                       </span>
                     </td>
 
                     <td className="py-4 px-5 font-mono text-brand-400 font-bold">
-                      {order.customerId}
+                      {order.customerId.split('-')[0]}
                     </td>
 
                     <td className="py-4 px-5">
                       {order.items.map((item, idx) => (
-                        <div key={idx} className="text-neutral-200">
-                          {item.productName} ({item.variantName}) × {item.quantity}
+                        <div key={idx} className="text-neutral-300 text-sm font-medium">
+                          {item.productName} <span className="text-neutral-500 text-xs">({item.variantName}) × {item.quantity}</span>
                         </div>
                       ))}
                     </td>
 
-                    <td className="py-4 px-5 font-bold text-white text-sm">
-                      ₦{order.totalAmount.toLocaleString()}
+                    <td className="py-4 px-5 font-black text-white text-sm">
+                      ₦{Number(order.totalAmount).toLocaleString()}
                     </td>
 
                     <td className="py-4 px-5 font-mono text-[11px] text-neutral-400">
@@ -150,7 +171,7 @@ export default function OrdersPage() {
                     </td>
 
                     <td className="py-4 px-5">
-                      <span className="px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wide uppercase bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                      <span className="px-2.5 py-1 rounded-lg text-[10px] font-black tracking-wider uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                         {order.status}
                       </span>
                     </td>
@@ -160,7 +181,8 @@ export default function OrdersPage() {
             </table>
           </div>
         )}
-      </div>
+        </div>
+      </main>
     </div>
   );
 }

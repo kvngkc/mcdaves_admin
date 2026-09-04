@@ -25,14 +25,16 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="dark">
-      <body className="bg-neutral-950 text-neutral-100 min-h-screen antialiased selection:bg-brand-500 selection:text-white flex overflow-x-hidden">
+    <html lang="en" className="dark h-full w-full">
+      <body className="bg-neutral-950 text-neutral-100 min-h-screen w-full antialiased selection:bg-brand-500 selection:text-white">
         <NextTopLoader color="#d97706" height={3} showSpinner={false} />
         <AuthOverlay>
-          <Sidebar />
-          <main className="flex-1 min-w-0 overflow-y-auto">
-            {children}
-          </main>
+          <div className="flex h-screen w-full overflow-hidden">
+            <Sidebar />
+            <main className="flex-1 min-w-0 h-screen overflow-y-auto">
+              {children}
+            </main>
+          </div>
         </AuthOverlay>
       </body>
     </html>

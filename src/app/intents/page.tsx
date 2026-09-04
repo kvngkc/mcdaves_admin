@@ -100,7 +100,7 @@ export default function IntentsPage() {
   };
 
   return (
-    <div className="p-6 max-w-7xl w-full mx-auto space-y-6">
+    <div className="flex-1 flex flex-col min-h-screen bg-neutral-950 text-neutral-200">
       {/* Floating Feedback Toasts */}
       <div className="fixed top-5 right-5 z-50 space-y-2 max-w-sm pointer-events-none">
         {toasts.map((toast) => (
@@ -124,30 +124,52 @@ export default function IntentsPage() {
         ))}
       </div>
 
-      <div>
-        <h1 className="text-2xl font-black text-white mb-1">Order Intents</h1>
-        <p className="text-neutral-400 text-sm">Track and manage customer leads and abandoned carts.</p>
-      </div>
-
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-neutral-900 p-4 rounded-2xl border border-neutral-800">
-        <div className="flex items-center gap-3 w-full sm:w-auto">
-          <div className="relative flex-1 sm:w-72">
-            <Search className="w-4 h-4 text-neutral-500 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              placeholder="Search by customer, phone, product..."
-              value={intentSearch}
-              onChange={(e) => setIntentSearch(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 bg-neutral-950 border border-neutral-800 rounded-xl text-xs text-white focus:outline-none focus:border-brand-500"
-            />
+      <header className="sticky top-0 z-20 flex-shrink-0 px-4 sm:px-8 py-5 border-b border-neutral-800/60 bg-neutral-950/80 backdrop-blur-md">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 ml-12 lg:ml-0">
+          <div>
+            <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white flex items-center gap-2">
+              <Users className="w-6 h-6 text-brand-500" />
+              Order Intents
+            </h1>
+            <p className="text-xs text-neutral-500 mt-1 max-w-lg">
+              Track and manage customer leads and abandoned carts.
+            </p>
           </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={loadIntents}
+              disabled={isLoadingIntents}
+              className="flex items-center justify-center gap-2 p-2.5 sm:px-4 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800/60 rounded-xl text-neutral-300 transition-all active:scale-95 disabled:opacity-50"
+              title="Refresh Data"
+            >
+              <RefreshCw className={`w-4 h-4 ${isLoadingIntents ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline text-sm font-medium">Refresh</span>
+            </button>
+          </div>
+        </div>
+      </header>
 
-          <select
-            value={intentStatusFilter}
-            onChange={(e) => setIntentStatusFilter(e.target.value)}
-            className="px-3 py-2 bg-neutral-950 border border-neutral-800 rounded-xl text-xs text-white focus:outline-none focus:border-brand-500"
-          >
-            <option value="ALL">All Statuses</option>
+      <main className="flex-1 p-4 sm:p-8 space-y-6 overflow-y-auto">
+        <div className="bg-neutral-900/50 border border-neutral-800/60 rounded-3xl p-4 sm:p-6 backdrop-blur-sm shadow-sm">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-6">
+            <div className="flex items-center gap-3 w-full sm:w-auto">
+              <div className="relative flex-1 sm:w-72">
+                <Search className="w-4 h-4 text-neutral-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Search by customer, phone, product..."
+                  value={intentSearch}
+                  onChange={(e) => setIntentSearch(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 bg-neutral-950/50 border border-neutral-800 rounded-xl text-sm text-white focus:outline-none focus:border-brand-500 shadow-inner"
+                />
+              </div>
+
+              <select
+                value={intentStatusFilter}
+                onChange={(e) => setIntentStatusFilter(e.target.value)}
+                className="px-3 py-2 bg-neutral-950 border border-neutral-800 rounded-xl text-sm font-semibold text-white focus:outline-none focus:border-brand-500 shadow-inner"
+              >
+                <option value="ALL">All Statuses</option>
             <option value="NEW">New Leads</option>
             <option value="WHATSAPP_OPENED">WhatsApp Opened</option>
             <option value="IN_CONVERSATION">In Conversation</option>
@@ -224,6 +246,14 @@ export default function IntentsPage() {
 
                     <td className="py-4 px-5 font-bold text-white text-sm">
                       ₦{(intent.priceAtIntent * intent.quantity).toLocaleString()}
+                      <div className="text-[10px] text-neutral-500 font-mono mt-0.5 font-normal">
+                        {new Date(intent.createdAt).toLocaleDateString('en-GB', {
+                          day: 'numeric',
+                          month: 'short',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </div>
                     </td>
 
                     <td className="py-4 px-5">
@@ -235,7 +265,7 @@ export default function IntentsPage() {
                             e.target.value as OrderIntentStatus,
                           )
                         }
-                        className="px-2.5 py-1 rounded-lg text-xs font-bold bg-neutral-950 border border-neutral-700 text-white focus:outline-none focus:border-brand-500"
+                        className="px-2.5 py-1 rounded-lg text-xs font-bold bg-neutral-950 border border-neutral-700 text-white focus:outline-none focus:border-brand-500 transition-colors"
                       >
                         <option value="NEW">NEW</option>
                         <option value="WHATSAPP_OPENED">WHATSAPP_OPENED</option>
@@ -255,7 +285,7 @@ export default function IntentsPage() {
                             onClick={() =>
                               copyToClipboard(intent.paymentLinkUrl!, intent.id)
                             }
-                            className="px-3 py-1.5 rounded-lg bg-brand-600/20 hover:bg-brand-600/30 text-brand-300 border border-brand-500/30 text-[11px] font-bold flex items-center gap-1.5 transition ml-auto"
+                            className="px-3 py-1.5 rounded-lg bg-brand-600/20 hover:bg-brand-600/30 text-brand-300 border border-brand-500/30 text-[11px] font-bold flex items-center gap-1.5 transition ml-auto active:scale-95"
                           >
                             {copiedLinkId === intent.id ? (
                               <>
@@ -274,7 +304,7 @@ export default function IntentsPage() {
                         <button
                           onClick={() => handleGeneratePaymentLink(intent.id)}
                           disabled={generatingLinkFor === intent.id}
-                          className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:bg-neutral-800 text-white text-[11px] font-bold flex items-center gap-1.5 transition ml-auto shadow-sm"
+                          className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:bg-neutral-800 text-white text-[11px] font-bold flex items-center gap-1.5 transition ml-auto shadow-sm active:scale-95"
                         >
                           <CreditCard className="w-3.5 h-3.5" />
                           <span>
@@ -291,7 +321,8 @@ export default function IntentsPage() {
             </table>
           </div>
         )}
-      </div>
+        </div>
+      </main>
     </div>
   );
-}
+};
