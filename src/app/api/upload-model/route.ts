@@ -76,23 +76,54 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         upsert: true,
       });
 
-    let glbUrl = `/models/${sanitizedFilename}`;
+    if (uploadError || !uploadData) {
+      console.error('[upload-model] Storage upload failed', {
+        bucket: 'vto-models',
+        message: uploadError?.message || 'No upload data returned',
+        name: uploadError?.name,
+        details: uploadError,
+        filename: sanitizedFilename,
+      });
 
-    if (uploadData && !uploadError) {
-      const { data: publicUrlData } = supabase.storage
-        .from('vto-models')
-        .getPublicUrl(sanitizedFilename);
-      if (publicUrlData?.publicUrl) {
-        glbUrl = publicUrlData.publicUrl;
-      }
-    } else {
-      console.warn('[Supabase Storage] Notice: bucket upload fallback to relative path:', uploadError);
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Failed to upload GLB model to storage.',
+          code: 'STORAGE_UPLOAD_FAILED',
+          details: process.env.NODE_ENV === 'development' ? uploadError?.message : undefined,
+        },
+        { status: 500 }
+      );
+    }
+
+    // Verify post-upload object existence & generate public URL
+    // (vto-models is a public bucket, so getPublicUrl is appropriate)
+    const { data: publicUrlData } = supabase.storage
+      .from('vto-models')
+      .getPublicUrl(uploadData.path);
+
+    const glbUrl = publicUrlData?.publicUrl;
+    if (!glbUrl) {
+      console.error('[upload-model] Failed to generate public URL for uploaded GLB', {
+        filename: sanitizedFilename,
+        storagePath: uploadData.path,
+      });
+
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Failed to verify uploaded GLB model URL.',
+          code: 'STORAGE_VERIFICATION_FAILED',
+        },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json(
       {
         success: true,
         glbPath: glbUrl,
+        storagePath: uploadData.path,
         filename: sanitizedFilename,
         sizeBytes: optimizedSizeBytes,
         originalSizeBytes,
