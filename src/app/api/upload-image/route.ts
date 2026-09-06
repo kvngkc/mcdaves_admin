@@ -58,17 +58,37 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         upsert: true,
       });
 
-    let imageUrl = `/images/products/${sanitizedFilename}`;
+    if (uploadError || !uploadData) {
+      console.error('[upload-image] Storage upload failed', {
+        bucket: 'product-media',
+        message: uploadError?.message || 'No upload data returned',
+        name: uploadError?.name,
+        details: uploadError,
+        filename: sanitizedFilename,
+      });
 
-    if (uploadData && !uploadError) {
-      const { data: publicUrlData } = supabase.storage
-        .from('product-media')
-        .getPublicUrl(sanitizedFilename);
-      if (publicUrlData?.publicUrl) {
-        imageUrl = publicUrlData.publicUrl;
-      }
-    } else {
-      console.warn('[Supabase Storage] Notice: product-media bucket upload fallback:', uploadError);
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Failed to upload image to storage.',
+          code: 'STORAGE_UPLOAD_FAILED',
+          details: process.env.NODE_ENV === 'development' ? uploadError?.message : undefined,
+        },
+        { status: 500 }
+      );
+    }
+
+    const { data: publicUrlData } = supabase.storage
+      .from('product-media')
+      .getPublicUrl(sanitizedFilename);
+
+    const imageUrl = publicUrlData?.publicUrl;
+
+    if (!imageUrl) {
+      return NextResponse.json(
+        { success: false, error: 'Failed to verify uploaded image URL.', code: 'STORAGE_VERIFICATION_FAILED' },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json(

@@ -152,7 +152,8 @@ export default function ProductModal({ isOpen, onClose, product, onSuccess, onEr
           onSuccess(`Product "${payload.name}" created in Supabase`);
           onClose();
         } else {
-          onError(data.error || 'Failed to create product');
+          const detailsStr = data.details ? JSON.stringify(data.details.map((d: any) => `${d.path.join('.')}: ${d.message}`)) : '';
+          onError(data.error + (detailsStr ? ` - ${detailsStr}` : ''));
         }
       } else if (product) {
         const res = await apiFetch('/api/products', {
@@ -165,7 +166,8 @@ export default function ProductModal({ isOpen, onClose, product, onSuccess, onEr
           onSuccess(`Product "${payload.name}" updated in Supabase`);
           onClose();
         } else {
-          onError(data.error || 'Failed to update product');
+          const detailsStr = data.details ? JSON.stringify(data.details.map((d: any) => `${d.path.join('.')}: ${d.message}`)) : '';
+          onError(data.error + (detailsStr ? ` - ${detailsStr}` : ''));
         }
       }
     } catch {
