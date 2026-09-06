@@ -105,7 +105,7 @@ export default function ProductsPage() {
   return (
     <div className="flex-1 flex flex-col min-h-screen bg-neutral-950 text-neutral-200">
       {toastMessage && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100]">
           <div
             className={`px-4 py-2.5 rounded-full shadow-2xl flex items-center gap-2 text-sm font-bold border animate-in slide-in-from-bottom-5 ${
               toastMessage.type === 'error'
