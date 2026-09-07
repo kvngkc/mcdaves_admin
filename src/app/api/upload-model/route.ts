@@ -4,7 +4,6 @@ import { supabase } from '@/lib/supabase/service';
 import { requireAdminSession } from '@/lib/auth/admin-auth';
 
 export const dynamic = 'force-dynamic';
-
 const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024; // 50MB
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -18,121 +17,109 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Supabase client not configured' }, { status: 500 });
     }
 
-    const formData = await request.formData();
-    const file = formData.get('file') as File | null;
-
-    if (!file) {
-      return NextResponse.json({ error: 'No 3D model file provided' }, { status: 400 });
+    const body = await request.json().catch(() => null);
+    if (!body) {
+      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
     }
 
-    const originalName = file.name || 'model.glb';
-    if (!originalName.toLowerCase().endsWith('.glb')) {
-      return NextResponse.json(
-        { error: 'Invalid file format. Only binary 3D GLB (.glb) files are supported for AR Virtual Try-On.' },
-        { status: 400 },
-      );
-    }
+    // --- STEP 1: Generate Signed Upload URL ---
+    if (body.action === 'generate-url') {
+      const originalName = body.filename || 'model.glb';
+      if (!originalName.toLowerCase().endsWith('.glb')) {
+        return NextResponse.json({ error: 'Invalid file format. Must be .glb' }, { status: 400 });
+      }
 
-    if (file.size > MAX_FILE_SIZE_BYTES) {
-      return NextResponse.json(
-        { error: 'File size exceeds maximum allowed limit (50MB).' },
-        { status: 400 },
-      );
-    }
+      const baseClean = originalName.toLowerCase().replace(/\.glb$/i, '').replace(/[^a-z0-9_-]/g, '_').replace(/_+/g, '_');
+      const rawPath = `raw_${baseClean}_${Date.now()}.glb`;
 
-    // Sanitize filename
-    const baseClean = originalName
-      .toLowerCase()
-      .replace(/\.glb$/i, '')
-      .replace(/[^a-z0-9_-]/g, '_')
-      .replace(/_+/g, '_');
+      // Create signed upload URL for the raw file
+      const { data, error } = await supabase.storage.from('vto-models').createSignedUploadUrl(rawPath);
+      
+      if (error || !data) {
+        return NextResponse.json({ error: 'Failed to generate upload URL', details: error?.message }, { status: 500 });
+      }
 
-    const sanitizedFilename = `${baseClean}_${Date.now().toString().slice(-4)}.glb`;
-    const arrayBuf = await file.arrayBuffer();
-    const rawBuffer = Buffer.from(arrayBuf);
-
-    // Run Automated 3D Compression & Optimization Pipeline
-    let finalBuffer: Uint8Array = new Uint8Array(arrayBuf);
-    let originalSizeBytes = file.size;
-    let optimizedSizeBytes = file.size;
-    let savingsPercent = 0;
-
-    try {
-      const { optimizeGlbBuffer } = await import('@/lib/vto/glb-optimizer');
-      const optResult = await optimizeGlbBuffer(rawBuffer, { maxTextureDimension: 1024, textureQuality: 82 });
-      finalBuffer = optResult.optimizedBuffer;
-      originalSizeBytes = optResult.originalSizeBytes;
-      optimizedSizeBytes = optResult.optimizedSizeBytes;
-      savingsPercent = optResult.savingsPercent;
-    } catch (optError) {
-      console.warn('[VTO Ingestion] Warning: Automated optimization failed; uploading original binary:', optError);
-    }
-
-    // Upload optimized GLB to Supabase Storage bucket 'vto-models'
-    const { data: uploadData, error: uploadError } = await supabase.storage
-      .from('vto-models')
-      .upload(sanitizedFilename, finalBuffer, {
-        contentType: 'model/gltf-binary',
-        upsert: true,
+      return NextResponse.json({
+        signedUrl: data.signedUrl,
+        path: data.path,
+        token: data.token,
       });
-
-    if (uploadError || !uploadData) {
-      console.error('[upload-model] Storage upload failed', {
-        bucket: 'vto-models',
-        message: uploadError?.message || 'No upload data returned',
-        name: uploadError?.name,
-        details: uploadError,
-        filename: sanitizedFilename,
-      });
-
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Failed to upload GLB model to storage.',
-          code: 'STORAGE_UPLOAD_FAILED',
-          details: process.env.NODE_ENV === 'development' ? uploadError?.message : undefined,
-        },
-        { status: 500 }
-      );
     }
 
-    // Verify post-upload object existence & generate public URL
-    // (vto-models is a public bucket, so getPublicUrl is appropriate)
-    const { data: publicUrlData } = supabase.storage
-      .from('vto-models')
-      .getPublicUrl(uploadData.path);
+    // --- STEP 2: Process Uploaded File ---
+    if (body.action === 'process-model') {
+      const rawPath = body.rawPath;
+      if (!rawPath) return NextResponse.json({ error: 'rawPath required' }, { status: 400 });
 
-    const glbUrl = publicUrlData?.publicUrl;
-    if (!glbUrl) {
-      console.error('[upload-model] Failed to generate public URL for uploaded GLB', {
-        filename: sanitizedFilename,
-        storagePath: uploadData.path,
-      });
+      try {
+        // 1. Download raw file from Supabase
+        const { data: fileData, error: downloadError } = await supabase.storage.from('vto-models').download(rawPath);
+        if (downloadError || !fileData) {
+          return NextResponse.json({ error: 'Failed to download raw model from storage' }, { status: 500 });
+        }
 
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Failed to verify uploaded GLB model URL.',
-          code: 'STORAGE_VERIFICATION_FAILED',
-        },
-        { status: 500 }
-      );
+        const arrayBuf = await fileData.arrayBuffer();
+        const rawBuffer = Buffer.from(arrayBuf);
+        const originalSizeBytes = rawBuffer.length;
+        
+        if (originalSizeBytes > MAX_FILE_SIZE_BYTES) {
+          return NextResponse.json({ error: 'File exceeds 50MB limit' }, { status: 400 });
+        }
+
+        // 2. Optimize and center
+        let finalBuffer: Buffer = rawBuffer as Buffer;
+        let optimizedSizeBytes = originalSizeBytes;
+        let savingsPercent = 0;
+
+        try {
+          const { optimizeGlbBuffer } = await import('@/lib/vto/glb-optimizer');
+          const optResult = await optimizeGlbBuffer(rawBuffer, { maxTextureDimension: 1024, textureQuality: 82 });
+          finalBuffer = optResult.optimizedBuffer;
+          optimizedSizeBytes = optResult.optimizedSizeBytes;
+          savingsPercent = optResult.savingsPercent;
+        } catch (optError) {
+          console.warn('[VTO] Optimization failed; uploading original binary:', optError);
+        }
+
+        // 3. Upload optimized file to final path
+        const finalPath = rawPath.replace(/^raw_/, 'opt_');
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('vto-models')
+          .upload(finalPath, finalBuffer, {
+            contentType: 'model/gltf-binary',
+            upsert: true,
+          });
+
+        if (uploadError || !uploadData) {
+          return NextResponse.json({ error: 'Failed to upload optimized model' }, { status: 500 });
+        }
+
+        // 4. Get Public URL
+        const { data: publicUrlData } = supabase.storage.from('vto-models').getPublicUrl(finalPath);
+        const glbUrl = publicUrlData?.publicUrl;
+
+        return NextResponse.json(
+          {
+            success: true,
+            glbPath: glbUrl,
+            storagePath: finalPath,
+            filename: finalPath,
+            sizeBytes: optimizedSizeBytes,
+            originalSizeBytes,
+            savingsPercent,
+            compressionSummary: `${(originalSizeBytes / (1024 * 1024)).toFixed(2)} MB ➔ ${(optimizedSizeBytes / 1024).toFixed(1)} KB (${savingsPercent}% saved)`,
+            message: '3D GLB model uploaded, centered, and optimized successfully',
+          },
+          { status: 201 },
+        );
+      } finally {
+        // ALWAYS clean up the temporary raw file from Supabase
+        await supabase.storage.from('vto-models').remove([rawPath]).catch(() => null);
+      }
     }
 
-    return NextResponse.json(
-      {
-        success: true,
-        glbPath: glbUrl,
-        storagePath: uploadData.path,
-        filename: sanitizedFilename,
-        sizeBytes: optimizedSizeBytes,
-        originalSizeBytes,
-        savingsPercent,
-        compressionSummary: `${(originalSizeBytes / (1024 * 1024)).toFixed(2)} MB ➔ ${(optimizedSizeBytes / 1024).toFixed(1)} KB (${savingsPercent}% saved)`,
-        message: '3D GLB model uploaded and optimized successfully',
-      },
-      { status: 201 },
-    );
+    return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
+
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Failed to process 3D model upload';
     return NextResponse.json({ error: msg }, { status: 500 });

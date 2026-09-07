@@ -12,7 +12,7 @@
  */
 
 import { NodeIO } from '@gltf-transform/core';
-import { prune, dedup, weld, resample } from '@gltf-transform/functions';
+import { prune, dedup, weld, resample, center } from '@gltf-transform/functions';
 
 export interface OptimizationResult {
   optimizedBuffer: Buffer;
@@ -39,8 +39,9 @@ export async function optimizeGlbBuffer(
   const io = new NodeIO();
   const doc = await io.readBinary(new Uint8Array(inputBuffer));
 
-  // 1. Structural Optimizations: Prune dead weight, dedup shared assets, weld vertices
+  // 1. Structural Optimizations: Auto-center to origin, prune dead weight, dedup shared assets, weld vertices
   await doc.transform(
+    center({ pivot: 'center' }),
     prune({ keepAttributes: false, keepLeaves: false }),
     dedup(),
     weld(),

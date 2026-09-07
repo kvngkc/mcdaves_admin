@@ -41,27 +41,48 @@ export default function VariantModal({ isOpen, onClose, product, onSuccess, onEr
 
     setIsUploadingGlb(true);
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const res = await apiFetch('/api/upload-model', {
+      // 1. Get Signed URL from our server
+      const urlRes = await apiFetch('/api/upload-model', {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'generate-url', filename: file.name }),
       });
+      const urlData = await urlRes.json();
+      if (!urlRes.ok) throw new Error(urlData.error || 'Failed to get upload URL');
 
-      const data = await res.json();
-      if (res.ok && data.glbPath) {
+      // 2. Direct Upload to Supabase Storage (bypasses Vercel 4.5MB limit)
+      const uploadRes = await fetch(urlData.signedUrl, {
+        method: 'PUT',
+        body: file,
+        headers: { 'Content-Type': 'model/gltf-binary' },
+      });
+      if (!uploadRes.ok) throw new Error('Direct storage upload failed');
+
+      // 3. Trigger server-side optimization & centering
+      const processRes = await apiFetch('/api/upload-model', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'process-model',
+          rawPath: urlData.path,
+          filename: file.name,
+        }),
+      });
+      const data = await processRes.json();
+
+      if (processRes.ok && data.glbPath) {
         setNewVariantData((prev) => ({ ...prev, glbPath: data.glbPath }));
         onSuccess(
           data.compressionSummary
-            ? `3D Model Optimized! ${data.compressionSummary}`
+            ? `3D Model Centered & Optimized! ${data.compressionSummary}`
             : `Uploaded 3D Model: ${data.filename}`,
         );
       } else {
-        onError(data.error || 'Failed to upload 3D model');
+        onError(data.error || 'Failed to optimize 3D model');
       }
-    } catch {
-      onError('Network error uploading 3D model');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Network error uploading 3D model';
+      onError(msg);
     } finally {
       setIsUploadingGlb(false);
     }
