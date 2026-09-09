@@ -14,5 +14,15 @@ export async function POST(): Promise<NextResponse> {
     path: '/',
     maxAge: 0,
   });
+  
+  // Also clear CSRF cookie
+  res.cookies.set({
+    name: 'mcdaves_admin_csrf',
+    value: '',
+    httpOnly: false,
+    sameSite: 'lax',
+    path: '/',
+    maxAge: 0,
+  });
   return res;
 }

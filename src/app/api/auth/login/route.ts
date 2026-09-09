@@ -7,18 +7,25 @@ import {
   generateCsrfToken,
 } from '@/lib/auth/admin-auth';
 
+import { verifyTurnstileToken } from '@/lib/security/turnstile';
+
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
     const body = await req.json();
-    const { email, password, passkey } = body;
+    const { email, password, turnstileToken } = body;
 
-    // Fallback if frontend still sends passkey instead of email/password
-    const authEmail = email || 'admin@mcdaves.com';
-    const authPassword = password || passkey;
+    // Validate CAPTCHA
+    const isValidToken = await verifyTurnstileToken(turnstileToken);
+    if (!isValidToken) {
+      return NextResponse.json(
+        { success: false, error: 'Security check failed. Please refresh.' },
+        { status: 400 },
+      );
+    }
 
-    if (!authEmail || !authPassword) {
+    if (!email || !password) {
       return NextResponse.json(
         { success: false, error: 'Email and password required.' },
         { status: 400 },
@@ -33,8 +40,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     const { data, error } = await supabase.auth.signInWithPassword({
-      email: authEmail,
-      password: authPassword,
+      email,
+      password,
     });
 
     if (error || !data.session) {

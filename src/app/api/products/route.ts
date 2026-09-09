@@ -8,7 +8,7 @@ import {
   mapRowToProduct,
   mapRowToVariant,
 } from '@/lib/supabase/service';
-import { requireAdminSession } from '@/lib/auth/admin-auth';
+import { requireManagerOrHigher } from '@/lib/auth/admin-auth';
 import { ResolvedProduct, ResolvedProductVariant } from '@/lib/commerce/types';
 
 export const dynamic = 'force-dynamic';
@@ -179,7 +179,7 @@ export async function GET(): Promise<NextResponse> {
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
-    const auth = await requireAdminSession(req);
+    const auth = await requireManagerOrHigher(req);
     if (!auth.authorized) {
       return NextResponse.json({ error: auth.error || 'Unauthorized' }, { status: 401 });
     }
@@ -258,7 +258,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
 export async function PATCH(req: NextRequest): Promise<NextResponse> {
   try {
-    const auth = await requireAdminSession(req);
+    const auth = await requireManagerOrHigher(req);
     if (!auth.authorized) {
       return NextResponse.json({ error: auth.error || 'Unauthorized' }, { status: 401 });
     }
@@ -322,7 +322,7 @@ export async function PATCH(req: NextRequest): Promise<NextResponse> {
 
 export async function DELETE(req: NextRequest): Promise<NextResponse> {
   try {
-    const auth = await requireAdminSession(req);
+    const auth = await requireManagerOrHigher(req);
     if (!auth.authorized) {
       return NextResponse.json({ error: auth.error || 'Unauthorized' }, { status: 401 });
     }

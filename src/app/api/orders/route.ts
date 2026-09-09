@@ -1,13 +1,13 @@
 // src/app/api/orders/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase/service';
-import { requireAdminSession } from '@/lib/auth/admin-auth';
+import { requireStaffOrHigher } from '@/lib/auth/admin-auth';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
   try {
-    const auth = await requireAdminSession(req);
+    const auth = await requireStaffOrHigher(req);
     if (!auth.authorized) {
       return NextResponse.json({ error: auth.error || 'Unauthorized' }, { status: 401 });
     }

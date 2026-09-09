@@ -17,6 +17,22 @@ import {
 export default function Sidebar() {
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
+  const [userRole, setUserRole] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    async function fetchUser() {
+      try {
+        const response = await apiFetch('/api/auth/me');
+        const res = await response.json();
+        if (res.user?.role) {
+          setUserRole(res.user.role);
+        }
+      } catch (err) {
+        console.error('Failed to fetch user role', err);
+      }
+    }
+    fetchUser();
+  }, []);
 
   const handleLogout = async () => {
     try {
@@ -28,10 +44,16 @@ export default function Sidebar() {
   };
 
   const navItems = [
-    { name: 'Intents', href: '/intents', icon: Users },
-    { name: 'Orders', href: '/orders', icon: Package },
-    { name: 'Products', href: '/products', icon: ShoppingBag },
+    { name: 'Intents', href: '/intents', icon: Users, roles: ['admin', 'manager', 'staff'] },
+    { name: 'Orders', href: '/orders', icon: Package, roles: ['admin', 'manager', 'staff'] },
+    { name: 'Products', href: '/products', icon: ShoppingBag, roles: ['admin', 'manager'] },
+    { name: 'Team', href: '/users', icon: Users, roles: ['admin'] },
   ];
+
+  const filteredNavItems = navItems.filter(item => {
+    if (!userRole) return false;
+    return item.roles.includes(userRole);
+  });
 
   return (
     <>
@@ -53,7 +75,6 @@ export default function Sidebar() {
         />
       )}
 
-      {/* Sidebar Content */}
       <aside 
         className={`fixed inset-y-0 left-0 z-50 w-72 lg:w-64 border-r border-neutral-800/60 bg-neutral-950/95 backdrop-blur-xl flex flex-col h-screen transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:sticky lg:top-0 ${
           isOpen ? 'translate-x-0' : '-translate-x-full'
@@ -64,7 +85,10 @@ export default function Sidebar() {
             <div className="w-8 h-8 rounded-lg bg-brand-500 flex items-center justify-center shadow-lg shadow-brand-500/20">
               <Sparkles className="w-4 h-4 text-white" />
             </div>
-            <span className="font-black tracking-tight text-white">McDaves Admin</span>
+            <div className="flex flex-col">
+              <span className="font-black tracking-tight text-white leading-tight">McDaves Admin</span>
+              {userRole && <span className="text-[10px] uppercase font-bold text-brand-400 tracking-wider">{userRole}</span>}
+            </div>
           </Link>
           <button 
             className="lg:hidden p-2 text-neutral-500 hover:text-white rounded-lg hover:bg-neutral-900"
@@ -75,7 +99,7 @@ export default function Sidebar() {
         </div>
 
         <nav className="flex-1 px-4 space-y-1.5 overflow-y-auto mt-4">
-          {navItems.map((item) => {
+          {filteredNavItems.map((item) => {
             const isActive = pathname.startsWith(item.href);
             const Icon = item.icon;
             return (

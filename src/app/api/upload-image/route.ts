@@ -1,7 +1,7 @@
 // src/app/api/upload-image/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase/service';
-import { requireAdminSession } from '@/lib/auth/admin-auth';
+import { requireManagerOrHigher } from '@/lib/auth/admin-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,7 +10,7 @@ const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/avif
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
-    const auth = await requireAdminSession(request);
+    const auth = await requireManagerOrHigher(request);
     if (!auth.authorized) {
       return NextResponse.json({ error: auth.error || 'Unauthorized' }, { status: 401 });
     }

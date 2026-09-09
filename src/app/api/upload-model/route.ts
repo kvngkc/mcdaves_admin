@@ -1,14 +1,14 @@
 // src/app/api/upload-model/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase/service';
-import { requireAdminSession } from '@/lib/auth/admin-auth';
+import { requireManagerOrHigher } from '@/lib/auth/admin-auth';
 
 export const dynamic = 'force-dynamic';
 const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024; // 50MB
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
-    const auth = await requireAdminSession(request);
+    const auth = await requireManagerOrHigher(request);
     if (!auth.authorized) {
       return NextResponse.json({ error: auth.error || 'Unauthorized' }, { status: 401 });
     }
@@ -97,6 +97,27 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         // 4. Get Public URL
         const { data: publicUrlData } = supabase.storage.from('vto-models').getPublicUrl(finalPath);
         const glbUrl = publicUrlData?.publicUrl;
+
+        // 5. Register in DB
+        if (glbUrl) {
+          const crypto = require('node:crypto');
+          const assetId = `vto_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+          const nameMatch = rawPath.match(/^raw_(.+?)_\d+\.glb$/);
+          const baseName = nameMatch ? nameMatch[1] : 'Unknown Model';
+          
+          const { error: dbError } = await supabase.from('vto_asset_calibrations').insert({
+            id: crypto.randomUUID(),
+            asset_id: assetId,
+            name: baseName,
+            status: 'APPROVED',
+            source_glb_url: glbUrl,
+            vto_glb_url: glbUrl,
+          });
+          
+          if (dbError) {
+            console.error('[VTO] Failed to insert DB record:', dbError);
+          }
+        }
 
         return NextResponse.json(
           {

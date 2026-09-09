@@ -37,10 +37,20 @@ export function verifyCsrfToken(req: NextRequest): boolean {
   }
 }
 
+export type AdminRole = 'admin' | 'manager' | 'staff';
+
+export interface AuthResult {
+  authorized: boolean;
+  role?: AdminRole;
+  error?: string;
+  user?: any;
+}
+
 /**
  * Checks if the request contains a valid Supabase access token for an admin user
+ * and verifies their role against the allowed roles.
  */
-export async function requireAdminSession(req: NextRequest): Promise<{ authorized: boolean; error?: string }> {
+export async function requireRole(req: NextRequest, allowedRoles: AdminRole[]): Promise<AuthResult> {
   // 1. Verify CSRF for mutating requests
   if (!verifyCsrfToken(req)) {
     return { authorized: false, error: 'CSRF token missing or invalid' };
@@ -62,10 +72,25 @@ export async function requireAdminSession(req: NextRequest): Promise<{ authorize
     return { authorized: false, error: 'Unauthorized: Invalid or expired session.' };
   }
 
-  // Ensure they are an admin
-  if (data.user.user_metadata?.role !== 'admin') {
-    return { authorized: false, error: 'Forbidden: Admin role required.' };
+  const userRole = data.user.user_metadata?.role as AdminRole;
+
+  if (!userRole || !allowedRoles.includes(userRole)) {
+    return { authorized: false, error: 'Forbidden: Insufficient permissions.' };
   }
 
-  return { authorized: true };
+  return { authorized: true, role: userRole, user: data.user };
+}
+
+// Legacy helper, defaults to just 'admin' if called
+export async function requireAdminSession(req: NextRequest): Promise<AuthResult> {
+  return requireRole(req, ['admin']);
+}
+
+// Helpers for specific access levels
+export async function requireManagerOrHigher(req: NextRequest): Promise<AuthResult> {
+  return requireRole(req, ['admin', 'manager']);
+}
+
+export async function requireStaffOrHigher(req: NextRequest): Promise<AuthResult> {
+  return requireRole(req, ['admin', 'manager', 'staff']);
 }
