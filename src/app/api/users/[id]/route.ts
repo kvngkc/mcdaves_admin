@@ -4,7 +4,8 @@ import { supabase } from '@/lib/supabase/service';
 
 export const dynamic = 'force-dynamic';
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const resolvedParams = await params;
   const auth = await requireAdminSession(req);
   if (!auth.authorized) {
     return NextResponse.json({ error: auth.error }, { status: 403 });
@@ -21,7 +22,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       return NextResponse.json({ error: 'Invalid role' }, { status: 400 });
     }
 
-    const { data, error } = await supabase.auth.admin.updateUserById(params.id, {
+    const { data, error } = await supabase.auth.admin.updateUserById(resolvedParams.id, {
       user_metadata: { role }
     });
 
@@ -33,7 +34,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   }
 }
 
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const resolvedParams = await params;
   const auth = await requireAdminSession(req);
   if (!auth.authorized) {
     return NextResponse.json({ error: auth.error }, { status: 403 });
@@ -45,7 +47,7 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
 
   try {
     // Actually delete the user from Supabase Auth
-    const { error } = await supabase.auth.admin.deleteUser(params.id);
+    const { error } = await supabase.auth.admin.deleteUser(resolvedParams.id);
 
     if (error) throw error;
 
