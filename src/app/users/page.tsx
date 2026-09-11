@@ -25,11 +25,27 @@ export default function TeamPage() {
   const fetchUsers = async () => {
     try {
       setLoading(true);
+      setError(null);
       const response = await apiFetch('/api/users');
+      if (response.status === 403) {
+        // True permission error — only admins can access this page
+        setError('permission_denied');
+        return;
+      }
+      if (!response.ok) {
+        const body = (await response.json()) as { error?: string };
+        setError(body.error || `Server error (${response.status})`);
+        return;
+      }
       const res = await response.json();
       setUsers(res.users || []);
     } catch (err: any) {
-      setError(err.message || 'Failed to fetch users. You may not have permission.');
+      // TypeError: Failed to fetch = network outage, not an auth problem
+      if (err instanceof TypeError && err.message.includes('fetch')) {
+        setError('network_error');
+      } else {
+        setError(err.message || 'Unexpected error loading team.');
+      }
     } finally {
       setLoading(false);
     }
@@ -89,11 +105,29 @@ export default function TeamPage() {
   }
 
   if (error) {
+    const isNetworkError = error === 'network_error';
+    const isPermissionError = error === 'permission_denied';
     return (
       <div className="p-8 text-center">
-        <ShieldAlert className="w-12 h-12 text-red-500 mx-auto mb-4" />
-        <h2 className="text-xl font-bold text-white mb-2">Access Denied</h2>
-        <p className="text-neutral-400">{error}</p>
+        <ShieldAlert className={`w-12 h-12 mx-auto mb-4 ${isPermissionError ? 'text-red-500' : 'text-amber-500'}`} />
+        <h2 className="text-xl font-bold text-white mb-2">
+          {isPermissionError ? 'Access Denied' : isNetworkError ? 'Connection Error' : 'Error Loading Team'}
+        </h2>
+        <p className="text-neutral-400 mb-5">
+          {isPermissionError
+            ? 'Only admins can view and manage team members.'
+            : isNetworkError
+            ? 'Could not connect to the server. Check your network and try again.'
+            : error}
+        </p>
+        {!isPermissionError && (
+          <button
+            onClick={fetchUsers}
+            className="px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white rounded-lg text-sm font-medium transition-colors"
+          >
+            Retry
+          </button>
+        )}
       </div>
     );
   }
@@ -182,8 +216,9 @@ export default function TeamPage() {
 
             <form onSubmit={handleInvite} className="space-y-4">
               <div>
-                <label className="block text-xs font-medium text-neutral-400 mb-1">Email Address</label>
+                <label htmlFor="inviteEmail" className="block text-xs font-medium text-neutral-400 mb-1">Email Address</label>
                 <input
+                  id="inviteEmail"
                   type="email"
                   required
                   value={inviteEmail}
@@ -196,24 +231,24 @@ export default function TeamPage() {
               <div>
                 <label className="block text-xs font-medium text-neutral-400 mb-1">Role Assignment</label>
                 <div className="space-y-2">
-                  <label className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${inviteRole === 'admin' ? 'bg-brand-500/10 border-brand-500/50' : 'bg-neutral-950 border-neutral-800 hover:border-neutral-700'}`}>
-                    <input type="radio" name="role" value="admin" checked={inviteRole === 'admin'} onChange={() => setInviteRole('admin')} className="mt-0.5 text-brand-500 focus:ring-brand-500" />
+                  <label htmlFor="roleAdmin" className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${inviteRole === 'admin' ? 'bg-brand-500/10 border-brand-500/50' : 'bg-neutral-950 border-neutral-800 hover:border-neutral-700'}`}>
+                    <input id="roleAdmin" type="radio" name="role" value="admin" checked={inviteRole === 'admin'} onChange={() => setInviteRole('admin')} className="mt-0.5 text-brand-500 focus:ring-brand-500" />
                     <div>
                       <p className={`text-sm font-medium ${inviteRole === 'admin' ? 'text-brand-400' : 'text-neutral-300'}`}>Admin</p>
                       <p className="text-xs text-neutral-500 mt-0.5">Full access to Users, Orders, Products, and Config.</p>
                     </div>
                   </label>
 
-                  <label className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${inviteRole === 'manager' ? 'bg-brand-500/10 border-brand-500/50' : 'bg-neutral-950 border-neutral-800 hover:border-neutral-700'}`}>
-                    <input type="radio" name="role" value="manager" checked={inviteRole === 'manager'} onChange={() => setInviteRole('manager')} className="mt-0.5 text-brand-500 focus:ring-brand-500" />
+                  <label htmlFor="roleManager" className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${inviteRole === 'manager' ? 'bg-brand-500/10 border-brand-500/50' : 'bg-neutral-950 border-neutral-800 hover:border-neutral-700'}`}>
+                    <input id="roleManager" type="radio" name="role" value="manager" checked={inviteRole === 'manager'} onChange={() => setInviteRole('manager')} className="mt-0.5 text-brand-500 focus:ring-brand-500" />
                     <div>
                       <p className={`text-sm font-medium ${inviteRole === 'manager' ? 'text-brand-400' : 'text-neutral-300'}`}>Manager</p>
                       <p className="text-xs text-neutral-500 mt-0.5">Manage Products, VTO Assets, and Orders.</p>
                     </div>
                   </label>
 
-                  <label className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${inviteRole === 'staff' ? 'bg-brand-500/10 border-brand-500/50' : 'bg-neutral-950 border-neutral-800 hover:border-neutral-700'}`}>
-                    <input type="radio" name="role" value="staff" checked={inviteRole === 'staff'} onChange={() => setInviteRole('staff')} className="mt-0.5 text-brand-500 focus:ring-brand-500" />
+                  <label htmlFor="roleStaff" className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${inviteRole === 'staff' ? 'bg-brand-500/10 border-brand-500/50' : 'bg-neutral-950 border-neutral-800 hover:border-neutral-700'}`}>
+                    <input id="roleStaff" type="radio" name="role" value="staff" checked={inviteRole === 'staff'} onChange={() => setInviteRole('staff')} className="mt-0.5 text-brand-500 focus:ring-brand-500" />
                     <div>
                       <p className={`text-sm font-medium ${inviteRole === 'staff' ? 'text-brand-400' : 'text-neutral-300'}`}>Staff</p>
                       <p className="text-xs text-neutral-500 mt-0.5">View and fulfill Orders only. No product access.</p>

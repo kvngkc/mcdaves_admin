@@ -160,6 +160,10 @@ export interface Order {
   status: 'CONFIRMED' | 'PROCESSING' | 'SHIPPED' | 'DELIVERED' | 'CANCELLED';
   shippingAddress?: any;
   customerNotes?: string;
+  /** Prescription option chosen by customer: 'upload' | 'plano' | 'whatsapp' | 'n/a' */
+  prescriptionOption?: string;
+  /** Durable Supabase Storage public URL for the uploaded prescription file (set only when prescriptionOption === 'upload') */
+  prescriptionFileUrl?: string;
   createdAt: string;
   updatedAt: string;
 }

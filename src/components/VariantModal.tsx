@@ -405,8 +405,9 @@ export default function VariantModal({ isOpen, onClose, product, onSuccess, onEr
 
             <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
               <div className="space-y-1">
-                <label className="text-neutral-400">Color Name *</label>
+                <label htmlFor="variantColorName" className="text-neutral-400">Color Name *</label>
                 <input
+                  id="variantColorName"
                   type="text"
                   required
                   placeholder="e.g. Matte Tortoise"
@@ -417,15 +418,18 @@ export default function VariantModal({ isOpen, onClose, product, onSuccess, onEr
               </div>
 
               <div className="space-y-1">
-                <label className="text-neutral-400">Color Hex Code</label>
+                <label htmlFor="variantColorHex" className="text-neutral-400">Color Hex Code</label>
                 <div className="flex items-center gap-2">
                   <input
+                    id="variantColorHexPicker"
+                    title="Choose color"
                     type="color"
                     value={newVariantData.colorHex || '#000000'}
                     onChange={(e) => setNewVariantData({ ...newVariantData, colorHex: e.target.value })}
                     className="w-9 h-9 rounded-lg bg-neutral-900 border border-neutral-700 cursor-pointer p-0.5"
                   />
                   <input
+                    id="variantColorHex"
                     type="text"
                     placeholder="#4A3728"
                     value={newVariantData.colorHex || ''}
@@ -436,8 +440,9 @@ export default function VariantModal({ isOpen, onClose, product, onSuccess, onEr
               </div>
 
               <div className="space-y-1">
-                <label className="text-neutral-400">Units in Stock (Qty) *</label>
+                <label htmlFor="variantUnitsInStock" className="text-neutral-400">Units in Stock (Qty) *</label>
                 <input
+                  id="variantUnitsInStock"
                   type="number"
                   min="0"
                   required
@@ -455,8 +460,9 @@ export default function VariantModal({ isOpen, onClose, product, onSuccess, onEr
               </div>
 
               <div className="space-y-1">
-                <label className="text-neutral-400">Price Override (Optional ₦)</label>
+                <label htmlFor="variantPriceOverride" className="text-neutral-400">Price Override (Optional ₦)</label>
                 <input
+                  id="variantPriceOverride"
                   type="number"
                   placeholder="Inherits base price"
                   value={newVariantData.priceOverride || ''}
@@ -472,7 +478,7 @@ export default function VariantModal({ isOpen, onClose, product, onSuccess, onEr
             </div>
 
             <div className="space-y-2 p-3 bg-neutral-900/60 rounded-xl border border-neutral-800">
-              <label className="text-neutral-300 font-semibold flex items-center justify-between">
+              <label htmlFor="variantGlbPath" className="text-neutral-300 font-semibold flex items-center justify-between">
                 <span>3D GLB Model (for AR Virtual Try-On)</span>
                 {isUploadingGlb && (
                   <span className="text-brand-400 text-[10px] flex items-center gap-1">
@@ -484,6 +490,7 @@ export default function VariantModal({ isOpen, onClose, product, onSuccess, onEr
 
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                 <input
+                  id="variantGlbPath"
                   type="text"
                   placeholder="/models/glasses.glb"
                   value={newVariantData.glbPath || ''}
@@ -491,7 +498,7 @@ export default function VariantModal({ isOpen, onClose, product, onSuccess, onEr
                   className="flex-1 px-3 py-2 bg-neutral-950 border border-neutral-700 rounded-xl text-white font-mono text-[11px]"
                 />
 
-                <label className="px-3.5 py-2 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition flex-shrink-0 active:scale-95">
+                <label htmlFor="variantImageToGlb" className="px-3.5 py-2 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition flex-shrink-0 active:scale-95">
                   {isGeneratingGlb ? (
                     <>
                       <div className="w-3.5 h-3.5 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
@@ -504,6 +511,7 @@ export default function VariantModal({ isOpen, onClose, product, onSuccess, onEr
                     </>
                   )}
                   <input
+                    id="variantImageToGlb"
                     type="file"
                     accept="image/png,image/jpeg,image/webp"
                     className="hidden"
@@ -525,10 +533,11 @@ export default function VariantModal({ isOpen, onClose, product, onSuccess, onEr
                   <span>✨ Parametric 3D</span>
                 </button>
 
-                <label className="px-3.5 py-2 bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition flex-shrink-0">
+                <label htmlFor="variantUploadGlb" className="px-3.5 py-2 bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition flex-shrink-0">
                   <Sparkles className="w-3.5 h-3.5" />
                   <span>Upload .glb</span>
                   <input
+                    id="variantUploadGlb"
                     type="file"
                     accept=".glb"
                     className="hidden"

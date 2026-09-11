@@ -34,12 +34,20 @@ export default function Sidebar() {
     fetchUser();
   }, []);
 
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
   const handleLogout = async () => {
+    if (isLoggingOut) return;
+    setIsLoggingOut(true);
     try {
       await apiFetch('/api/auth/logout', { method: 'POST' });
-      window.location.reload();
     } catch {
-      // Ignore
+      // Even if the network request fails, redirect to login —
+      // the server-cleared cookie means the session is invalid anyway.
+    } finally {
+      // Hard-navigate to login; reload() would just re-fetch with cleared cookies
+      // and may loop or show a stale page depending on middleware.
+      window.location.href = '/login';
     }
   };
 
@@ -123,10 +131,11 @@ export default function Sidebar() {
         <div className="p-4 border-t border-neutral-800/60">
           <button
             onClick={handleLogout}
-            className="group flex items-center gap-3 w-full px-4 py-3 text-sm font-medium text-neutral-400 hover:text-red-400 hover:bg-red-950/30 rounded-xl transition-all active:scale-95"
+            disabled={isLoggingOut}
+            className="group flex items-center gap-3 w-full px-4 py-3 text-sm font-medium text-neutral-400 hover:text-red-400 hover:bg-red-950/30 rounded-xl transition-all active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            <LogOut className="w-5 h-5 text-neutral-500 group-hover:text-red-400/70" />
-            Secure Logout
+            <LogOut className={`w-5 h-5 text-neutral-500 group-hover:text-red-400/70 ${isLoggingOut ? 'animate-pulse' : ''}`} />
+            {isLoggingOut ? 'Logging out...' : 'Secure Logout'}
           </button>
         </div>
       </aside>

@@ -42,6 +42,11 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       status: row.status,
       shippingAddress: row.shipping_address,
       customerNotes: row.customer_notes || undefined,
+      // Prescription metadata — stored as a JSONB column 'metadata' on the orders table.
+      // prescriptionOption: 'upload' | 'plano' | 'whatsapp' | 'n/a'
+      // prescriptionFileUrl: public Supabase Storage URL (set only when option === 'upload')
+      prescriptionOption: (row.metadata as Record<string, unknown>)?.prescriptionOption as string | undefined,
+      prescriptionFileUrl: (row.metadata as Record<string, unknown>)?.prescriptionFileUrl as string | undefined,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     }));

@@ -51,6 +51,14 @@ export default function IntentsPage() {
     loadIntents();
   }, [loadIntents]);
 
+  // Auto-refresh every 30 seconds so new order intents appear without a manual reload
+  useEffect(() => {
+    const interval = setInterval(() => {
+      loadIntents();
+    }, 30_000);
+    return () => clearInterval(interval);
+  }, [loadIntents]);
+
   const handleUpdateIntentStatus = async (id: string, newStatus: OrderIntentStatus) => {
     try {
       const res = await apiFetch(`/api/order-intents/${id}`, {
@@ -154,8 +162,10 @@ export default function IntentsPage() {
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-6">
             <div className="flex items-center gap-3 w-full sm:w-auto">
               <div className="relative flex-1 sm:w-72">
+                <label htmlFor="intentSearch" className="sr-only">Search intents</label>
                 <Search className="w-4 h-4 text-neutral-500 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
+                  id="intentSearch"
                   type="text"
                   placeholder="Search by customer, phone, product..."
                   value={intentSearch}
@@ -164,7 +174,9 @@ export default function IntentsPage() {
                 />
               </div>
 
+              <label htmlFor="intentStatusFilter" className="sr-only">Filter by status</label>
               <select
+                id="intentStatusFilter"
                 value={intentStatusFilter}
                 onChange={(e) => setIntentStatusFilter(e.target.value)}
                 className="px-3 py-2 bg-neutral-950 border border-neutral-800 rounded-xl text-sm font-semibold text-white focus:outline-none focus:border-brand-500 shadow-inner"
@@ -180,16 +192,9 @@ export default function IntentsPage() {
             <option value="LOST">Lost</option>
           </select>
         </div>
-
-        <button
-          onClick={() => loadIntents()}
-          className="px-3 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-xs font-semibold text-neutral-300 flex items-center gap-1.5 transition ml-auto"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${isLoadingIntents ? 'animate-spin' : ''}`} />
-          <span>Refresh</span>
-        </button>
       </div>
-      </div>      <div className="bg-neutral-900 rounded-3xl border border-neutral-800 overflow-hidden shadow-xl">
+      </div>
+      <div className="bg-neutral-900 rounded-3xl border border-neutral-800 overflow-hidden shadow-xl">
         {intents.length === 0 ? (
           <div className="p-12 text-center text-neutral-500 space-y-2">
             <Users className="w-8 h-8 mx-auto text-neutral-600" />

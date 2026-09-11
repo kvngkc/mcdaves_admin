@@ -60,7 +60,7 @@ export async function PATCH(
           email: intent.customer_email || `customer-${intent.customer_id.toLowerCase()}@mcdaves.com.ng`,
           amount: totalAmountKobo,
           currency: 'NGN',
-          callback_url: `${storeUrl}/checkout/success?intentId=${intent.id}`,
+          callback_url: `${storeUrl}/payment/callback?intentId=${intent.id}`,
           metadata: {
             orderIntentId: intent.id,
             customerId: intent.customer_id,

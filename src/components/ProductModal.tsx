@@ -224,13 +224,14 @@ export default function ProductModal({ isOpen, onClose, product, onSuccess, onEr
         <form id="productForm" onSubmit={handleSaveProduct} className="overflow-y-auto p-5 sm:p-6 space-y-5 flex-1 custom-scrollbar text-xs">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1">
-              <label className="text-neutral-300 font-semibold flex items-center justify-between">
+              <label htmlFor="productName" className="text-neutral-300 font-semibold flex items-center justify-between">
                 <span>Product Name *</span>
                 {(!productFormData.name || productFormData.name.trim().length < 2) && (
                   <span className="text-[10px] text-amber-400 font-normal">Required</span>
                 )}
               </label>
               <input
+                id="productName"
                 type="text"
                 required
                 value={productFormData.name || ''}
@@ -241,8 +242,9 @@ export default function ProductModal({ isOpen, onClose, product, onSuccess, onEr
             </div>
 
             <div className="space-y-1">
-              <label className="text-neutral-400 font-semibold">Slug (URL identifier)</label>
+              <label htmlFor="productSlug" className="text-neutral-400 font-semibold">Slug (URL identifier)</label>
               <input
+                id="productSlug"
                 type="text"
                 value={productFormData.slug || ''}
                 onChange={(e) => setProductFormData({ ...productFormData, slug: e.target.value })}
@@ -252,8 +254,9 @@ export default function ProductModal({ isOpen, onClose, product, onSuccess, onEr
             </div>
 
             <div className="space-y-1">
-              <label className="text-neutral-400 font-semibold">Category *</label>
+              <label htmlFor="productCategory" className="text-neutral-400 font-semibold">Category *</label>
               <select
+                id="productCategory"
                 value={productFormData.category || 'unisex'}
                 onChange={(e) => setProductFormData({ ...productFormData, category: e.target.value as any })}
                 className="w-full px-3 py-2 bg-neutral-950 border border-neutral-700 rounded-xl text-white focus:outline-none focus:border-brand-500"
@@ -266,8 +269,9 @@ export default function ProductModal({ isOpen, onClose, product, onSuccess, onEr
             </div>
 
             <div className="space-y-1">
-              <label className="text-neutral-400 font-semibold">Catalog Status</label>
+              <label htmlFor="productStatus" className="text-neutral-400 font-semibold">Catalog Status</label>
               <select
+                id="productStatus"
                 value={productFormData.status || 'ACTIVE'}
                 onChange={(e) => setProductFormData({ ...productFormData, status: e.target.value as any })}
                 className="w-full px-3 py-2 bg-neutral-950 border border-neutral-700 rounded-xl text-white focus:outline-none focus:border-brand-500"
@@ -279,13 +283,14 @@ export default function ProductModal({ isOpen, onClose, product, onSuccess, onEr
             </div>
 
             <div className="space-y-1">
-              <label className="text-neutral-300 font-semibold flex items-center justify-between">
+              <label htmlFor="productDefaultPrice" className="text-neutral-300 font-semibold flex items-center justify-between">
                 <span>Default Price (₦) *</span>
                 {(!productFormData.defaultPrice || Number(productFormData.defaultPrice) <= 0) && (
                   <span className="text-[10px] text-amber-400 font-normal">Must be &gt; 0</span>
                 )}
               </label>
               <input
+                id="productDefaultPrice"
                 type="number"
                 required
                 min="1"
@@ -297,8 +302,9 @@ export default function ProductModal({ isOpen, onClose, product, onSuccess, onEr
             </div>
 
             <div className="space-y-1">
-              <label className="text-neutral-400 font-semibold">Original Price (₦ Optional)</label>
+              <label htmlFor="productOriginalPrice" className="text-neutral-400 font-semibold">Original Price (₦ Optional)</label>
               <input
+                id="productOriginalPrice"
                 type="number"
                 value={productFormData.defaultOriginalPrice || ''}
                 onChange={(e) =>
@@ -313,8 +319,9 @@ export default function ProductModal({ isOpen, onClose, product, onSuccess, onEr
             </div>
 
             <div className="space-y-1">
-              <label className="text-neutral-400 font-semibold">Material</label>
+              <label htmlFor="productMaterial" className="text-neutral-400 font-semibold">Material</label>
               <input
+                id="productMaterial"
                 type="text"
                 value={productFormData.defaultMaterial || ''}
                 onChange={(e) => setProductFormData({ ...productFormData, defaultMaterial: e.target.value })}
@@ -324,8 +331,9 @@ export default function ProductModal({ isOpen, onClose, product, onSuccess, onEr
             </div>
 
             <div className="space-y-1">
-              <label className="text-neutral-400 font-semibold">Weight</label>
+              <label htmlFor="productWeight" className="text-neutral-400 font-semibold">Weight</label>
               <input
+                id="productWeight"
                 type="text"
                 value={productFormData.defaultWeight || ''}
                 onChange={(e) => setProductFormData({ ...productFormData, defaultWeight: e.target.value })}
@@ -339,8 +347,9 @@ export default function ProductModal({ isOpen, onClose, product, onSuccess, onEr
             <span className="text-[11px] font-bold text-brand-400 block">Optical Dimensions (mm)</span>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div>
-                <label className="text-[10px] text-neutral-400">Lens Width</label>
+                <label htmlFor="productLensWidth" className="text-[10px] text-neutral-400">Lens Width</label>
                 <input
+                  id="productLensWidth"
                   type="number"
                   value={productFormData.defaultSpecifications?.lensWidthMm || 52}
                   onChange={(e) =>
@@ -356,8 +365,9 @@ export default function ProductModal({ isOpen, onClose, product, onSuccess, onEr
                 />
               </div>
               <div>
-                <label className="text-[10px] text-neutral-400">Bridge Width</label>
+                <label htmlFor="productBridgeWidth" className="text-[10px] text-neutral-400">Bridge Width</label>
                 <input
+                  id="productBridgeWidth"
                   type="number"
                   value={productFormData.defaultSpecifications?.bridgeWidthMm || 18}
                   onChange={(e) =>
@@ -373,8 +383,9 @@ export default function ProductModal({ isOpen, onClose, product, onSuccess, onEr
                 />
               </div>
               <div>
-                <label className="text-[10px] text-neutral-400">Temple Length</label>
+                <label htmlFor="productTempleLength" className="text-[10px] text-neutral-400">Temple Length</label>
                 <input
+                  id="productTempleLength"
                   type="number"
                   value={productFormData.defaultSpecifications?.templeLengthMm || 140}
                   onChange={(e) =>
@@ -390,8 +401,9 @@ export default function ProductModal({ isOpen, onClose, product, onSuccess, onEr
                 />
               </div>
               <div>
-                <label className="text-[10px] text-neutral-400">Total Frame Width</label>
+                <label htmlFor="productFrameWidth" className="text-[10px] text-neutral-400">Total Frame Width</label>
                 <input
+                  id="productFrameWidth"
                   type="number"
                   value={productFormData.defaultSpecifications?.frameWidthMm || 140}
                   onChange={(e) =>
@@ -446,10 +458,11 @@ export default function ProductModal({ isOpen, onClose, product, onSuccess, onEr
                         <img src={media.url} alt={`${imageType} View`} className="w-full h-full object-contain" />
                       </div>
                     )}
-                    <label className="w-full py-2 bg-neutral-800 hover:bg-neutral-700 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 cursor-pointer transition shadow-sm">
+                    <label htmlFor={`productImage-${imageType}`} className="w-full py-2 bg-neutral-800 hover:bg-neutral-700 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 cursor-pointer transition shadow-sm">
                       <Upload className="w-3.5 h-3.5 text-brand-400" />
                       <span>{media?.url ? 'Replace Photo' : `Upload ${imageType}`}</span>
                       <input
+                        id={`productImage-${imageType}`}
                         type="file"
                         accept="image/*"
                         className="hidden"
@@ -467,8 +480,9 @@ export default function ProductModal({ isOpen, onClose, product, onSuccess, onEr
           </div>
 
           <div className="space-y-1">
-            <label className="text-neutral-400 font-semibold">Description</label>
+            <label htmlFor="productDescription" className="text-neutral-400 font-semibold">Description</label>
             <textarea
+              id="productDescription"
               rows={3}
               value={productFormData.description || ''}
               onChange={(e) => setProductFormData({ ...productFormData, description: e.target.value })}
@@ -478,8 +492,9 @@ export default function ProductModal({ isOpen, onClose, product, onSuccess, onEr
           </div>
 
           <div className="flex flex-wrap items-center gap-5 pt-1">
-            <label className="flex items-center gap-2 cursor-pointer text-xs">
+            <label htmlFor="productTryOn" className="flex items-center gap-2 cursor-pointer text-xs">
               <input
+                id="productTryOn"
                 type="checkbox"
                 checked={productFormData.tryOnAvailable ?? true}
                 onChange={(e) => setProductFormData({ ...productFormData, tryOnAvailable: e.target.checked })}
@@ -488,8 +503,9 @@ export default function ProductModal({ isOpen, onClose, product, onSuccess, onEr
               <span className="text-neutral-300">Virtual Try-On Enabled</span>
             </label>
 
-            <label className="flex items-center gap-2 cursor-pointer text-xs">
+            <label htmlFor="productPrescription" className="flex items-center gap-2 cursor-pointer text-xs">
               <input
+                id="productPrescription"
                 type="checkbox"
                 checked={productFormData.prescriptionRequired ?? true}
                 onChange={(e) => setProductFormData({ ...productFormData, prescriptionRequired: e.target.checked })}
@@ -498,8 +514,9 @@ export default function ProductModal({ isOpen, onClose, product, onSuccess, onEr
               <span className="text-neutral-300">Prescription Ready</span>
             </label>
 
-            <label className="flex items-center gap-2 cursor-pointer text-xs">
+            <label htmlFor="productAutoHide" className="flex items-center gap-2 cursor-pointer text-xs">
               <input
+                id="productAutoHide"
                 type="checkbox"
                 checked={productFormData.hideWhenOutOfStock ?? true}
                 onChange={(e) => setProductFormData({ ...productFormData, hideWhenOutOfStock: e.target.checked })}

@@ -74,8 +74,13 @@ const VariantSchema = z.object({
   status: z.string().optional(),
 });
 
-export async function GET(): Promise<NextResponse> {
+export async function GET(req: NextRequest): Promise<NextResponse> {
   try {
+    const auth = await requireManagerOrHigher(req);
+    if (!auth.authorized) {
+      return NextResponse.json({ error: auth.error || 'Unauthorized' }, { status: 401 });
+    }
+
     if (!supabase) {
       return NextResponse.json({ error: 'Supabase client not configured' }, { status: 500 });
     }

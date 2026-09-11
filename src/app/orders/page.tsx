@@ -102,8 +102,10 @@ export default function OrdersPage() {
           <div className="flex items-center justify-between gap-4 mb-6">
             <div className="relative w-full sm:w-auto">
               <div className="relative flex-1 sm:w-72">
+                <label htmlFor="orderSearch" className="sr-only">Search Orders</label>
                 <Search className="w-4 h-4 text-neutral-500 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
+                  id="orderSearch"
                   type="text"
                   placeholder="Search by Order ID, Reference, Customer..."
                   value={orderSearch}
@@ -124,11 +126,12 @@ export default function OrdersPage() {
             <table className="w-full text-left text-xs">
               <thead className="bg-neutral-950/60 text-neutral-400 border-b border-neutral-800 uppercase text-[10px] tracking-wider font-semibold">
                 <tr>
-                  <th className="py-3 px-5">Order ID & Date</th>
+                  <th className="py-3 px-5">Order ID &amp; Date</th>
                   <th className="py-3 px-5">Customer Ref</th>
                   <th className="py-3 px-5">Purchased Items</th>
                   <th className="py-3 px-5">Total Paid</th>
                   <th className="py-3 px-5">Paystack Ref</th>
+                  <th className="py-3 px-5">Prescription</th>
                   <th className="py-3 px-5">Order Status</th>
                 </tr>
               </thead>
@@ -167,6 +170,24 @@ export default function OrdersPage() {
 
                     <td className="py-4 px-5 font-mono text-[11px] text-neutral-400">
                       {order.paymentReference}
+                    </td>
+
+                    {/* Prescription column */}
+                    <td className="py-4 px-5">
+                      {order.prescriptionOption === 'upload' && order.prescriptionFileUrl ? (
+                        <a
+                          href={order.prescriptionFileUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold tracking-wider uppercase bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500/20 transition"
+                        >
+                          📄 View Rx
+                        </a>
+                      ) : (
+                        <span className="text-[11px] text-neutral-500 capitalize">
+                          {order.prescriptionOption || '—'}
+                        </span>
+                      )}
                     </td>
 
                     <td className="py-4 px-5">
