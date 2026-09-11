@@ -7,8 +7,20 @@ const supabaseKey =
   process.env.SUPABASE_SERVICE_ROLE_KEY ||
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-export const supabase: SupabaseClient | null =
-  supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
+export const supabase: SupabaseClient | null = (() => {
+  if (!supabaseUrl) return null;
+
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    if (process.env.NODE_ENV === 'production') {
+      console.error('[FATAL] SUPABASE_SERVICE_ROLE_KEY is missing in production! Admin API will fail.');
+      // We don't throw here to avoid crashing the build, but we will return null
+      // so API routes can explicitly throw 500 when they try to use it.
+    }
+  }
+
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  return key ? createClient(supabaseUrl, key) : null;
+})();
 
 export function mapRowToProduct(row: any): Product {
   return {
