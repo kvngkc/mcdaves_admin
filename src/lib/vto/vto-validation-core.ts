@@ -1,6 +1,6 @@
 // src/lib/vto/vto-validation-core.ts
 import { NodeIO } from '@gltf-transform/core';
-import { bounds } from '@gltf-transform/functions';
+import { getBounds } from '@gltf-transform/functions';
 import crypto from 'node:crypto';
 
 // The client submits this structure (untrusted)
@@ -100,7 +100,7 @@ export async function validateAssetConsistency(
   }
 
   // Calculate actual bounding box using gltf-transform
-  const bbox = bounds(scene);
+  const bbox = getBounds(scene);
   const sizeX = bbox.max[0] - bbox.min[0];
   const sizeY = bbox.max[1] - bbox.min[1];
   const sizeZ = bbox.max[2] - bbox.min[2];
