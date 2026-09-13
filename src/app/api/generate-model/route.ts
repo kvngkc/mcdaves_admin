@@ -77,26 +77,47 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const sanitizedFilename = `mcd_vto_${cleanPrefix}_${Date.now().toString().slice(-4)}.glb`;
 
     // 4. Upload to Supabase Storage bucket 'vto-models'
+    const bucketName = 'vto-models';
+    const storagePath = `tmp_${sanitizedFilename}`;
     const { data: uploadData, error: uploadError } = await supabase.storage
-      .from('vto-models')
-      .upload(sanitizedFilename, optResult.optimizedBuffer, {
+      .from(bucketName)
+      .upload(storagePath, optResult.optimizedBuffer, {
         contentType: 'model/gltf-binary',
         upsert: true,
       });
 
-    let glbUrl = `/models/${sanitizedFilename}`;
-
-    if (uploadData && !uploadError) {
-      const { data: publicUrlData } = supabase.storage
-        .from('vto-models')
-        .getPublicUrl(sanitizedFilename);
-      if (publicUrlData?.publicUrl) {
-        glbUrl = publicUrlData.publicUrl;
-      }
-    } else {
-      console.warn('[Supabase Storage] Notice: upload fallback to relative path:', uploadError);
+    if (uploadError || !uploadData) {
+      throw new Error(`Storage upload failed: ${uploadError?.message || 'Unknown error'}`);
     }
 
+    // 5. Verify Durable Storage (Verify object actually exists)
+    // Wait for the object to be fully written or just get its metadata
+    // In Supabase, upload is atomic but we can verify it by getting public URL or checking if we can download it. 
+    // A better check is to list or get metadata if possible. For simplicity, we just check if we can get publicUrl, but we should also check the db if needed. Wait, getPublicUrl is synchronous and doesn't check existence. 
+    // We can use createSignedUrl or download to verify, but download is heavy. Let's just assume `upload` returning success is a good start, but the user requested explicit verification. We will use `download` with a byte range of 0-1, or just let `uploadData` be enough? No, user explicitly said: "Storage Object Verification: Returning a public URL is not sufficient. The system must verify the expected storage object exists (e.g. by querying the object metadata or ensuring the upload returns a positive byte size) before creating the production DB record."
+    // Let's query object metadata (supabase storage doesn't have a direct stat, but we can do list or download). Wait, upload returns { path: string, id?: string }. Wait, supabase storage `upload` returns { data: { path: string, ... }, error: null } if successful. There is no `headObject` equivalent in the standard `supabase-js` v2 for storage unless we list files. 
+    // Let's use `from(bucketName).list()` to verify it exists and has positive size.
+    const { data: listData, error: listError } = await supabase.storage
+      .from(bucketName)
+      .list(undefined, { search: storagePath });
+      
+    const uploadedObject = listData?.find(item => item.name === storagePath);
+    if (listError || !uploadedObject || uploadedObject.metadata?.size === 0) {
+      // If we can't find it or size is 0, the upload was not truly successful
+      throw new Error('Storage verification failed: object not found or empty after upload.');
+    }
+
+    let glbUrl = '';
+    const { data: publicUrlData } = supabase.storage
+      .from(bucketName)
+      .getPublicUrl(storagePath);
+    if (publicUrlData?.publicUrl) {
+      glbUrl = publicUrlData.publicUrl;
+    } else {
+       throw new Error('Failed to generate public URL for storage object.');
+    }
+
+    // 6. Return temporary URL for client processing
     return NextResponse.json(
       {
         success: true,
@@ -105,7 +126,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         sizeBytes: optResult.optimizedSizeBytes,
         originalSizeBytes: optResult.originalSizeBytes,
         savingsPercent: optResult.savingsPercent,
-        summary: `3D model generated: ${(optResult.optimizedSizeBytes / 1024).toFixed(1)} KB`,
+        summary: `3D model generated (temporary): ${(optResult.optimizedSizeBytes / 1024).toFixed(1)} KB`,
         message: '3D GLB model generated and optimized successfully',
       },
       { status: 201 },

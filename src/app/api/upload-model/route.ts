@@ -82,42 +82,38 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         }
 
         // 3. Upload optimized file to final path
-        const finalPath = rawPath.replace(/^raw_/, 'opt_');
+        const finalPath = rawPath.replace(/^raw_/, 'tmp_');
+        const bucketName = 'vto-models';
         const { data: uploadData, error: uploadError } = await supabase.storage
-          .from('vto-models')
+          .from(bucketName)
           .upload(finalPath, finalBuffer, {
             contentType: 'model/gltf-binary',
             upsert: true,
           });
 
         if (uploadError || !uploadData) {
-          return NextResponse.json({ error: 'Failed to upload optimized model' }, { status: 500 });
+          throw new Error(`Failed to upload optimized model: ${uploadError?.message || 'Unknown error'}`);
         }
 
-        // 4. Get Public URL
-        const { data: publicUrlData } = supabase.storage.from('vto-models').getPublicUrl(finalPath);
-        const glbUrl = publicUrlData?.publicUrl;
-
-        // 5. Register in DB
-        if (glbUrl) {
-          const crypto = require('node:crypto');
-          const assetId = `vto_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-          const nameMatch = rawPath.match(/^raw_(.+?)_\d+\.glb$/);
-          const baseName = nameMatch ? nameMatch[1] : 'Unknown Model';
+        // 4. Verify Durable Storage (Verify object actually exists)
+        const { data: listData, error: listError } = await supabase.storage
+          .from(bucketName)
+          .list(undefined, { search: finalPath });
           
-          const { error: dbError } = await supabase.from('vto_asset_calibrations').insert({
-            id: crypto.randomUUID(),
-            asset_id: assetId,
-            name: baseName,
-            status: 'APPROVED',
-            source_glb_url: glbUrl,
-            vto_glb_url: glbUrl,
-          });
-          
-          if (dbError) {
-            console.error('[VTO] Failed to insert DB record:', dbError);
-          }
+        const uploadedObject = listData?.find(item => item.name === finalPath);
+        if (listError || !uploadedObject || uploadedObject.metadata?.size === 0) {
+          throw new Error('Storage verification failed: object not found or empty after upload.');
         }
+
+        let glbUrl = '';
+        const { data: publicUrlData } = supabase.storage.from(bucketName).getPublicUrl(finalPath);
+        if (publicUrlData?.publicUrl) {
+          glbUrl = publicUrlData.publicUrl;
+        } else {
+           throw new Error('Failed to generate public URL for storage object.');
+        }
+
+        // 5. Return temporary URL for client processing
 
         return NextResponse.json(
           {
