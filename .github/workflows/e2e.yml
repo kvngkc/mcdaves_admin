@@ -1,4 +1,4 @@
-name: Admin API Tests (Vitest)
+name: Admin E2E (Playwright)
 
 on:
   push:
@@ -7,8 +7,8 @@ on:
     branches: [ main ]
 
 jobs:
-  test:
-    name: Run Admin Tests
+  e2e:
+    name: Run Admin Playwright E2E
     runs-on: ubuntu-latest
 
     steps:
@@ -24,9 +24,22 @@ jobs:
       - name: Install Dependencies
         run: npm install
 
-      - name: Run Vitest Tests
-        run: npm run test
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright E2E
+        run: npm run test:e2e
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
+      - name: Upload Playwright Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: admin-playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore

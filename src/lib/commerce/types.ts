@@ -44,6 +44,10 @@ export interface Product {
   updatedAt: string;
 }
 
+/**
+ * The variant's VTO identity is the authoritative calibration asset ID.
+ * A raw/derived GLB URL is deliberately not part of the catalog contract.
+ */
 export interface ProductVariant {
   id: string;
   productId: string;
@@ -58,8 +62,7 @@ export interface ProductVariant {
   weightOverride?: string;
   specificationsOverride?: Partial<PhysicalSpecifications>;
   descriptionOverride?: string;
-  glbPath?: string;
-  vtoCalibrationId?: string;
+  vtoAssetId?: string;
   inStock: boolean;
   stockLevel: StockLevel;
   unitsInStock?: number;
