@@ -13,8 +13,6 @@ export const supabase: SupabaseClient | null = (() => {
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
     if (process.env.NODE_ENV === 'production') {
       console.error('[FATAL] SUPABASE_SERVICE_ROLE_KEY is missing in production! Admin API will fail.');
-      // We don't throw here to avoid crashing the build, but we will return null
-      // so API routes can explicitly throw 500 when they try to use it.
     }
   }
 
@@ -101,7 +99,7 @@ export function mapRowToVariant(row: any): ProductVariant {
     weightOverride: row.weight_override || undefined,
     specificationsOverride: row.specifications_override || undefined,
     descriptionOverride: row.description_override || undefined,
-    glbPath: row.glb_path || undefined,
+    vtoAssetId: row.vto_asset_id || undefined,
     inStock: row.in_stock ?? true,
     stockLevel: row.stock_level || 'high',
     unitsInStock: row.units_in_stock ?? 10,
@@ -128,7 +126,7 @@ export function mapVariantToRow(variant: Partial<ProductVariant>): any {
     weight_override: variant.weightOverride || null,
     specifications_override: variant.specificationsOverride || null,
     description_override: variant.descriptionOverride || null,
-    glb_path: variant.glbPath || null,
+    vto_asset_id: variant.vtoAssetId || null,
     in_stock: variant.inStock ?? true,
     stock_level: variant.stockLevel || 'high',
     units_in_stock: Number(variant.unitsInStock) ?? 20,
