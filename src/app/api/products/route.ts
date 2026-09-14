@@ -13,7 +13,6 @@ import { ResolvedProduct, ResolvedProductVariant } from '@/lib/commerce/types';
 
 export const dynamic = 'force-dynamic';
 
-// --- Zod Schemas ---
 const SpecificationsSchema = z.object({
   frameWidthMm: z.number().optional(),
   lensWidthMm: z.number().optional(),
@@ -51,6 +50,11 @@ const ProductSchema = z.object({
   media: z.array(ProductMediaSchema).optional(),
 });
 
+/**
+ * A catalog variant may only reference the authoritative VTO asset identity.
+ * Raw GLB URLs are intentionally rejected here so they cannot become a
+ * customer-facing VTO relationship by accident.
+ */
 const VariantSchema = z.object({
   id: z.string().optional(),
   productId: z.string().min(1),
@@ -65,7 +69,7 @@ const VariantSchema = z.object({
   weightOverride: z.string().optional(),
   specificationsOverride: SpecificationsSchema.optional(),
   descriptionOverride: z.string().optional(),
-  glbPath: z.string().optional(),
+  vtoAssetId: z.string().uuid().optional(),
   inStock: z.boolean().optional(),
   stockLevel: z.string().optional(),
   unitsInStock: z.number().min(0).optional(),
@@ -198,6 +202,26 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     if (action === 'CREATE_VARIANT') {
       const parsedVariant = VariantSchema.parse(body.variant);
+
+      if (parsedVariant.vtoAssetId) {
+        const { data: asset, error: assetError } = await supabase
+          .from('vto_asset_calibrations')
+          .select('asset_id, status')
+          .eq('asset_id', parsedVariant.vtoAssetId)
+          .single();
+
+        if (assetError || !asset) {
+          return NextResponse.json({ error: 'Referenced VTO asset does not exist.' }, { status: 400 });
+        }
+
+        if (asset.status !== 'PUBLISHED') {
+          return NextResponse.json(
+            { error: `VTO asset is ${asset.status}. Only PUBLISHED assets may be attached to a catalog variant.` },
+            { status: 409 },
+          );
+        }
+      }
+
       const variantRow = mapVariantToRow(parsedVariant as any);
       const { data, error } = await supabase.from('product_variants').insert(variantRow).select().single();
       if (error) throw error;
@@ -212,7 +236,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       throw error;
     }
 
-    // Provision Initial Default Variant in product_variants so the product is immediately usable
     const initialVariant = {
       id: `var-${createdProduct.id}-standard-${Date.now().toString().slice(-4)}`,
       product_id: createdProduct.id,
@@ -235,7 +258,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       console.warn('[Create Product] Variant Provision Warning:', varInsertErr);
     }
 
-    // Handle media if provided
     if (Array.isArray(parsedProduct.media) && parsedProduct.media.length > 0) {
       const mediaRows = parsedProduct.media.map((m: any, idx: number) => ({
         id: `med-${createdProduct.id}-${idx}-${Date.now().toString().slice(-3)}`,
@@ -278,6 +300,26 @@ export async function PATCH(req: NextRequest): Promise<NextResponse> {
     if (action === 'UPDATE_VARIANT') {
       const parsedVariant = VariantSchema.parse(body.variant);
       const { id, ...updates } = parsedVariant;
+
+      if (updates.vtoAssetId) {
+        const { data: asset, error: assetError } = await supabase
+          .from('vto_asset_calibrations')
+          .select('asset_id, status')
+          .eq('asset_id', updates.vtoAssetId)
+          .single();
+
+        if (assetError || !asset) {
+          return NextResponse.json({ error: 'Referenced VTO asset does not exist.' }, { status: 400 });
+        }
+
+        if (asset.status !== 'PUBLISHED') {
+          return NextResponse.json(
+            { error: `VTO asset is ${asset.status}. Only PUBLISHED assets may be attached to a catalog variant.` },
+            { status: 409 },
+          );
+        }
+      }
+
       const { data, error } = await supabase
         .from('product_variants')
         .update(mapVariantToRow(updates as any))
@@ -285,7 +327,7 @@ export async function PATCH(req: NextRequest): Promise<NextResponse> {
         .select()
         .single();
       if (error) throw error;
-      return NextResponse.json({ success: true, variant: data }, { status: 200 });
+      return NextResponse.json({ success: true, variant: mapRowToVariant(data) }, { status: 200 });
     }
 
     const parsedProduct = ProductSchema.parse(body.product);
@@ -298,7 +340,6 @@ export async function PATCH(req: NextRequest): Promise<NextResponse> {
       .single();
     if (error) throw error;
 
-    // Update media records if passed
     if (Array.isArray(media)) {
       await supabase.from('product_media').delete().eq('product_id', id);
       if (media.length > 0) {
@@ -350,7 +391,6 @@ export async function DELETE(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ success: true, message: 'Variant deleted' }, { status: 200 });
     }
 
-    // Cascade delete media and variants first
     await supabase.from('product_media').delete().eq('product_id', id);
     await supabase.from('product_variants').delete().eq('product_id', id);
 
