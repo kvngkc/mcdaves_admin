@@ -35,20 +35,20 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         const originalSizeBytes = rawBuffer.length;
         if (originalSizeBytes > MAX_FILE_SIZE_BYTES) return NextResponse.json({ error: 'File exceeds 50MB limit' }, { status: 400 });
 
-        let finalBuffer = rawBuffer;
+        let finalBytes: Uint8Array = rawBuffer;
         let optimizedSizeBytes = originalSizeBytes;
         let savingsPercent = 0;
         try {
           const { optimizeGlbBuffer } = await import('@/lib/vto/glb-optimizer');
           const optResult = await optimizeGlbBuffer(rawBuffer, { maxTextureDimension: 1024, textureQuality: 82 });
-          finalBuffer = optResult.optimizedBuffer;
+          finalBytes = optResult.optimizedBuffer;
           optimizedSizeBytes = optResult.optimizedSizeBytes;
           savingsPercent = optResult.savingsPercent;
         } catch (optError) { console.warn('[VTO] Optimization failed; uploading original binary:', optError); }
 
         const finalPath = rawPath.replace(/^raw_/, 'tmp_');
         const bucketName = 'vto-models';
-        const { data: uploadData, error: uploadError } = await supabase.storage.from(bucketName).upload(finalPath, finalBuffer, { contentType: 'model/gltf-binary', upsert: true });
+        const { data: uploadData, error: uploadError } = await supabase.storage.from(bucketName).upload(finalPath, Buffer.from(finalBytes), { contentType: 'model/gltf-binary', upsert: true });
         if (uploadError || !uploadData) throw new Error(`Failed to upload optimized model: ${uploadError?.message || 'Unknown error'}`);
         const { data: listData, error: listError } = await supabase.storage.from(bucketName).list(undefined, { search: finalPath });
         const uploadedObject = listData?.find((item) => item.name === finalPath);
