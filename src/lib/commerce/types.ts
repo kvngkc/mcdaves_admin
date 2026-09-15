@@ -58,7 +58,10 @@ export interface ProductVariant {
   weightOverride?: string;
   specificationsOverride?: Partial<PhysicalSpecifications>;
   descriptionOverride?: string;
+  /** @deprecated Legacy storage URL. VTO identity is vtoAssetId. */
   glbPath?: string;
+  /** Authoritative VTO asset identity, linked to vto_asset_calibrations. */
+  vtoAssetId?: string;
   vtoCalibrationId?: string;
   inStock: boolean;
   stockLevel: StockLevel;
@@ -97,16 +100,7 @@ export interface Customer {
   updatedAt: string;
 }
 
-export type OrderIntentStatus =
-  | 'NEW'
-  | 'WHATSAPP_OPENED'
-  | 'IN_CONVERSATION'
-  | 'CONSULTATION'
-  | 'AWAITING_CUSTOMER'
-  | 'PAYMENT_PENDING'
-  | 'CONVERTED'
-  | 'LOST'
-  | 'CANCELLED';
+export type OrderIntentStatus = 'NEW' | 'WHATSAPP_OPENED' | 'IN_CONVERSATION' | 'CONSULTATION' | 'AWAITING_CUSTOMER' | 'PAYMENT_PENDING' | 'CONVERTED' | 'LOST' | 'CANCELLED';
 
 export interface OrderIntent {
   id: string;
@@ -160,9 +154,7 @@ export interface Order {
   status: 'CONFIRMED' | 'PROCESSING' | 'SHIPPED' | 'DELIVERED' | 'CANCELLED';
   shippingAddress?: any;
   customerNotes?: string;
-  /** Prescription option chosen by customer: 'upload' | 'plano' | 'whatsapp' | 'n/a' */
   prescriptionOption?: string;
-  /** Durable Supabase Storage public URL for the uploaded prescription file (set only when prescriptionOption === 'upload') */
   prescriptionFileUrl?: string;
   createdAt: string;
   updatedAt: string;
