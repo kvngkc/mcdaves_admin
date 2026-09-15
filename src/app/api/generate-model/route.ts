@@ -5,6 +5,7 @@ import { requireManagerOrHigher } from '@/lib/auth/admin-auth';
 import { buildParametricEyewear, exportGroupToOptimizedGlb, EyewearStyle } from '@/lib/vto/parametric-eyewear-builder';
 import { convertImageTo3DGlb } from '@/lib/vto/image-to-glb-builder';
 import { registerStoredVtoAsset } from '@/lib/vto/register-stored-asset';
+import { parsePositiveMillimeters } from '@/lib/vto/physical-dimensions';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,25 +19,34 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     let optResult: any;
     let productName = 'Eyewear Frame';
     let variantName = 'Custom';
-    let frameWidthMm = 140;
-    let bridgeWidthMm = 18;
-    let lensWidthMm = 50;
+    let frameWidthMm: number;
+    let bridgeWidthMm: number;
+    let lensWidthMm: number;
+    let lensHeightMm: number;
 
     if (contentType.includes('multipart/form-data')) {
       const formData = await request.formData();
       const file = formData.get('file') as File | null;
       productName = (formData.get('productName') as string) || productName;
       variantName = (formData.get('variantName') as string) || variantName;
-      frameWidthMm = Number(formData.get('frameWidthMm')) || 140;
       if (!file) return NextResponse.json({ error: 'No image file provided for 3D conversion' }, { status: 400 });
-      optResult = await convertImageTo3DGlb(Buffer.from(await file.arrayBuffer()), { frameWidthMm, wrapRadiusMm: 145 });
+      frameWidthMm = parsePositiveMillimeters(formData.get('frameWidthMm'), 'Frame width');
+      bridgeWidthMm = parsePositiveMillimeters(formData.get('bridgeWidthMm'), 'Bridge width');
+      lensWidthMm = parsePositiveMillimeters(formData.get('lensWidthMm'), 'Lens width');
+      lensHeightMm = parsePositiveMillimeters(formData.get('lensHeightMm'), 'Lens height');
+      optResult = await convertImageTo3DGlb(Buffer.from(await file.arrayBuffer()), { frameWidthMm, wrapRadiusMm: frameWidthMm });
     } else {
       const body = await request.json();
-      const { style = 'round', colorHex = '#1A1A1A', materialType = 'acetate', frameWidthMm: fw = 140, lensWidthMm: lw = 50, lensHeightMm = 40, bridgeWidthMm: bw = 18 } = body;
+      const style = body.style || 'round';
+      const colorHex = body.colorHex || '#1A1A1A';
+      const materialType = body.materialType || 'acetate';
       productName = body.productName || productName;
       variantName = body.variantName || variantName;
-      frameWidthMm = Number(fw) || 140; lensWidthMm = Number(lw) || 50; bridgeWidthMm = Number(bw) || 18;
-      const modelGroup = buildParametricEyewear({ style: style as EyewearStyle, colorHex, materialType: materialType as 'acetate' | 'metal' | 'tortoise', frameWidthMm, lensWidthMm, lensHeightMm: Number(lensHeightMm) || 40, bridgeWidthMm });
+      frameWidthMm = parsePositiveMillimeters(body.frameWidthMm, 'Frame width');
+      lensWidthMm = parsePositiveMillimeters(body.lensWidthMm, 'Lens width');
+      lensHeightMm = parsePositiveMillimeters(body.lensHeightMm, 'Lens height');
+      bridgeWidthMm = parsePositiveMillimeters(body.bridgeWidthMm, 'Bridge width');
+      const modelGroup = buildParametricEyewear({ style: style as EyewearStyle, colorHex, materialType: materialType as 'acetate' | 'metal' | 'tortoise', frameWidthMm, lensWidthMm, lensHeightMm, bridgeWidthMm });
       optResult = await exportGroupToOptimizedGlb(modelGroup);
     }
 
@@ -67,6 +77,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     return NextResponse.json({ success: true, glbPath: registration.glbPath, vtoAssetId: registration.assetId, status: registration.status, filename: sanitizedFilename, sizeBytes: optResult.optimizedSizeBytes, originalSizeBytes: optResult.originalSizeBytes, savingsPercent: optResult.savingsPercent, summary: `3D model generated and registered as a VTO asset (temporary processing complete): ${(optResult.optimizedSizeBytes / 1024).toFixed(1)} KB`, message: '3D GLB model generated, validated, and is awaiting VTO review' }, { status: 201 });
   } catch (err: unknown) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Failed to generate 3D model' }, { status: 500 });
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Failed to generate 3D model' }, { status: 400 });
   }
 }

@@ -15,11 +15,11 @@ export interface ProductMedia {
 }
 
 export interface PhysicalSpecifications {
-  frameWidthMm: number;
-  lensWidthMm: number;
-  bridgeWidthMm: number;
-  templeLengthMm: number;
-  frameSize: string;
+  frameWidthMm: number | null;
+  lensWidthMm: number | null;
+  bridgeWidthMm: number | null;
+  templeLengthMm: number | null;
+  frameSize?: string;
 }
 
 export interface Product {
