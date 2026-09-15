@@ -14,6 +14,26 @@ const ProductSchema = z.object({ id: z.string().optional(), slug: z.string().min
 // returned authoritative asset ID automatically.
 export const VariantSchema = z.object({ id: z.string().optional(), productId: z.string().min(1), slug: z.string().min(1), name: z.string().min(1), sku: z.string().min(1), colorName: z.string().min(1), colorHex: z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Must be a valid hex color'), priceOverride: z.number().min(0).optional(), originalPriceOverride: z.number().min(0).optional(), materialOverride: z.string().optional(), weightOverride: z.string().optional(), specificationsOverride: SpecificationsSchema.optional(), descriptionOverride: z.string().optional(), glbPath: z.string().optional(), vtoAssetId: z.string().optional(), vtoCalibrationId: z.string().optional(), inStock: z.boolean().optional(), stockLevel: z.string().optional(), unitsInStock: z.number().min(0).optional(), hideWhenOutOfStock: z.boolean().optional(), sortOrder: z.number().optional(), status: z.string().optional() });
 
+function getErrorResponse(err: unknown, fallback: string) {
+  if (err instanceof z.ZodError) return { error: 'Validation failed', details: err.issues };
+
+  // Supabase/PostgREST errors are plain objects, not necessarily instanceof Error.
+  // Preserve their useful diagnostic fields so authenticated Admin users can see
+  // the real database failure instead of the misleading generic catalog message.
+  if (err && typeof err === 'object') {
+    const candidate = err as { message?: unknown; details?: unknown; hint?: unknown; code?: unknown };
+    const message = typeof candidate.message === 'string' && candidate.message.trim() ? candidate.message : fallback;
+    return {
+      error: message,
+      ...(typeof candidate.code === 'string' ? { code: candidate.code } : {}),
+      ...(typeof candidate.details === 'string' && candidate.details.trim() ? { details: candidate.details } : {}),
+      ...(typeof candidate.hint === 'string' && candidate.hint.trim() ? { hint: candidate.hint } : {}),
+    };
+  }
+
+  return { error: fallback };
+}
+
 async function resolveVtoAssetId(vtoAssetId?: string, glbPath?: string) {
   if (vtoAssetId) return vtoAssetId;
   if (!glbPath || !supabase) return undefined;
@@ -46,7 +66,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       return { ...p, variants: matchingVariants, defaultVariant, media: matchingMedia as any };
     });
     return NextResponse.json({ products }, { status: 200 });
-  } catch (err: unknown) { return NextResponse.json({ error: err instanceof Error ? err.message : 'Failed to fetch catalog' }, { status: 500 }); }
+  } catch (err: unknown) { return NextResponse.json(getErrorResponse(err, 'Failed to fetch catalog'), { status: 500 }); }
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
@@ -69,7 +89,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     await supabase.from('product_variants').insert(initialVariant);
     if (Array.isArray(parsedProduct.media) && parsedProduct.media.length > 0) await supabase.from('product_media').insert(parsedProduct.media.map((m: any, idx: number) => ({ id: `med-${createdProduct.id}-${idx}-${Date.now().toString().slice(-3)}`, product_id: createdProduct.id, type: (m.mediaType || 'front').replace('image_', ''), url: m.url, alt_text: m.altText || createdProduct.name, is_primary: m.isPrimary ?? (idx === 0), sort_order: m.sortOrder ?? idx })));
     return NextResponse.json({ success: true, product: mapRowToProduct(createdProduct) }, { status: 201 });
-  } catch (err: unknown) { if (err instanceof z.ZodError) return NextResponse.json({ error: 'Validation failed', details: err.issues }, { status: 400 }); return NextResponse.json({ error: err instanceof Error ? err.message : 'Error creating catalog item' }, { status: 400 }); }
+  } catch (err: unknown) {
+    const response = getErrorResponse(err, 'Error creating catalog item');
+    console.error('[POST /api/products] catalog operation failed', response);
+    return NextResponse.json(response, { status: response.error === 'Validation failed' ? 400 : 400 });
+  }
 }
 
 export async function PATCH(req: NextRequest): Promise<NextResponse> {
@@ -89,7 +113,7 @@ export async function PATCH(req: NextRequest): Promise<NextResponse> {
     const { data, error } = await supabase.from('products').update(mapProductToRow({ ...updates, id } as any)).eq('id', id).select().single(); if (error) throw error;
     if (Array.isArray(media)) { await supabase.from('product_media').delete().eq('product_id', id); if (media.length > 0) await supabase.from('product_media').insert(media.map((m: any, idx: number) => ({ id: `med-${id}-${idx}-${Date.now().toString().slice(-3)}`, product_id: id, type: (m.mediaType || 'front').replace('image_', ''), url: m.url, alt_text: m.altText || data.name, is_primary: m.isPrimary ?? (idx === 0), sort_order: m.sortOrder ?? idx }))); }
     return NextResponse.json({ success: true, product: mapRowToProduct(data) }, { status: 200 });
-  } catch (err: unknown) { if (err instanceof z.ZodError) return NextResponse.json({ error: 'Validation failed', details: err.issues }, { status: 400 }); return NextResponse.json({ error: err instanceof Error ? err.message : 'Error updating catalog item' }, { status: 400 }); }
+  } catch (err: unknown) { const response = getErrorResponse(err, 'Error updating catalog item'); return NextResponse.json(response, { status: 400 }); }
 }
 
 export async function DELETE(req: NextRequest): Promise<NextResponse> {
@@ -99,5 +123,5 @@ export async function DELETE(req: NextRequest): Promise<NextResponse> {
     if (type === 'variant') { const { error } = await supabase.from('product_variants').delete().eq('id', id); if (error) throw error; return NextResponse.json({ success: true, message: 'Variant deleted' }, { status: 200 }); }
     await supabase.from('product_media').delete().eq('product_id', id); await supabase.from('product_variants').delete().eq('product_id', id); const { error } = await supabase.from('products').delete().eq('id', id); if (error) throw error;
     return NextResponse.json({ success: true, message: 'Product deleted' }, { status: 200 });
-  } catch (err: unknown) { return NextResponse.json({ error: err instanceof Error ? err.message : 'Error deleting catalog item' }, { status: 400 }); }
+  } catch (err: unknown) { const response = getErrorResponse(err, 'Error deleting catalog item'); return NextResponse.json(response, { status: 400 }); }
 }
