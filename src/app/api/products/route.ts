@@ -16,10 +16,6 @@ export const VariantSchema = z.object({ id: z.string().optional(), productId: z.
 
 function getErrorResponse(err: unknown, fallback: string) {
   if (err instanceof z.ZodError) return { error: 'Validation failed', details: err.issues };
-
-  // Supabase/PostgREST errors are plain objects, not necessarily instanceof Error.
-  // Preserve their useful diagnostic fields so authenticated Admin users can see
-  // the real database failure instead of the misleading generic catalog message.
   if (err && typeof err === 'object') {
     const candidate = err as { message?: unknown; details?: unknown; hint?: unknown; code?: unknown };
     const message = typeof candidate.message === 'string' && candidate.message.trim() ? candidate.message : fallback;
@@ -30,8 +26,14 @@ function getErrorResponse(err: unknown, fallback: string) {
       ...(typeof candidate.hint === 'string' && candidate.hint.trim() ? { hint: candidate.hint } : {}),
     };
   }
-
   return { error: fallback };
+}
+
+function stripLegacyVariantColumns(row: Record<string, unknown>) {
+  // product_variants does not contain the legacy vto_calibration_id column.
+  // Keep the API/type compatibility for now, but never send the stale field to PostgREST.
+  delete row.vto_calibration_id;
+  return row;
 }
 
 async function resolveVtoAssetId(vtoAssetId?: string, glbPath?: string) {
@@ -78,7 +80,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       const parsedVariant = VariantSchema.parse(body.variant);
       const resolvedAssetId = await resolveVtoAssetId(parsedVariant.vtoAssetId, parsedVariant.glbPath);
       await assertVtoAssetIsUsable(resolvedAssetId);
-      const variantRow = mapVariantToRow({ ...parsedVariant, vtoAssetId: resolvedAssetId } as any);
+      const variantRow = stripLegacyVariantColumns(mapVariantToRow({ ...parsedVariant, vtoAssetId: resolvedAssetId } as any));
       const { data, error } = await supabase.from('product_variants').insert(variantRow).select().single(); if (error) throw error;
       return NextResponse.json({ success: true, variant: mapRowToVariant(data) }, { status: 201 });
     }
@@ -92,7 +94,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   } catch (err: unknown) {
     const response = getErrorResponse(err, 'Error creating catalog item');
     console.error('[POST /api/products] catalog operation failed', response);
-    return NextResponse.json(response, { status: response.error === 'Validation failed' ? 400 : 400 });
+    return NextResponse.json(response, { status: 400 });
   }
 }
 
@@ -106,7 +108,8 @@ export async function PATCH(req: NextRequest): Promise<NextResponse> {
       const resolvedAssetId = await resolveVtoAssetId(parsedVariant.vtoAssetId, parsedVariant.glbPath);
       await assertVtoAssetIsUsable(resolvedAssetId);
       const { id, ...updates } = parsedVariant;
-      const { data, error } = await supabase.from('product_variants').update(mapVariantToRow({ ...updates, vtoAssetId: resolvedAssetId } as any)).eq('id', id).select().single(); if (error) throw error;
+      const variantRow = stripLegacyVariantColumns(mapVariantToRow({ ...updates, vtoAssetId: resolvedAssetId } as any));
+      const { data, error } = await supabase.from('product_variants').update(variantRow).eq('id', id).select().single(); if (error) throw error;
       return NextResponse.json({ success: true, variant: mapRowToVariant(data) }, { status: 200 });
     }
     const parsedProduct = ProductSchema.parse(body.product); const { id, media, ...updates } = parsedProduct;
