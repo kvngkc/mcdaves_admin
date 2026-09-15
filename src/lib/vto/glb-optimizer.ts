@@ -1,14 +1,6 @@
 // src/lib/vto/glb-optimizer.ts
 /**
  * Automated 3D GLB Eyewear Compression & Optimization Engine.
- * 
- * Pipeline:
- * 1. Parse raw binary GLB using @gltf-transform/core.
- * 2. Prune unused nodes, cameras, lights, and orphan materials.
- * 3. Dedup duplicate accessors, textures, and vertex buffers.
- * 4. Weld coincident vertices to clean up indices.
- * 5. Downscale & compress embedded 4K textures to 1024px WebP using sharp.
- * 6. Serialize into ultra-lightweight streaming GLB binary (<500 KB).
  */
 
 import { NodeIO } from '@gltf-transform/core';
@@ -29,17 +21,16 @@ export interface OptimizationOptions {
 }
 
 export async function optimizeGlbBuffer(
-  inputBuffer: Buffer,
+  inputBytes: Uint8Array,
   options: OptimizationOptions = {},
 ): Promise<OptimizationResult> {
-  const originalSizeBytes = inputBuffer.length;
+  const originalSizeBytes = inputBytes.byteLength;
   const maxDim = options.maxTextureDimension || 1024;
   const quality = options.textureQuality || 82;
 
   const io = new NodeIO();
-  const doc = await io.readBinary(new Uint8Array(inputBuffer));
+  const doc = await io.readBinary(inputBytes);
 
-  // 1. Structural Optimizations: Auto-center to origin, prune dead weight, dedup shared assets, weld vertices
   await doc.transform(
     center({ pivot: 'center' }),
     prune({ keepAttributes: false, keepLeaves: false }),
@@ -52,7 +43,6 @@ export async function optimizeGlbBuffer(
   const textures = root.listTextures();
   const meshes = root.listMeshes();
 
-  // 2. Texture Optimization: Downscale oversized 4K textures & convert to compressed WebP
   try {
     const sharp = (await import('sharp')).default;
 
@@ -74,7 +64,6 @@ export async function optimizeGlbBuffer(
             });
           }
 
-          // Convert to WebP
           const webpBuffer = await image.webp({ quality }).toBuffer();
           texture.setImage(new Uint8Array(webpBuffer));
           texture.setMimeType('image/webp');
@@ -87,7 +76,6 @@ export async function optimizeGlbBuffer(
     console.warn('[GLB-Optimizer] Warning: Sharp module unavailable; skipping texture compression:', sharpErr);
   }
 
-  // 3. Serialize optimized GLB
   const outputUint8 = await io.writeBinary(doc);
   const optimizedBuffer = Buffer.from(outputUint8);
   const optimizedSizeBytes = optimizedBuffer.byteLength;
