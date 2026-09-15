@@ -13,6 +13,19 @@ export const supabase: SupabaseClient | null = (() => {
   return supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
 })();
 
+function finitePositiveOrNull(value: unknown): number | null {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function optionalFrameSize(row: any): string | undefined {
+  if (typeof row.frame_size === 'string' && row.frame_size.trim()) return row.frame_size;
+  const lens = finitePositiveOrNull(row.lens_width_mm);
+  const bridge = finitePositiveOrNull(row.bridge_width_mm);
+  const temple = finitePositiveOrNull(row.temple_length_mm);
+  return lens !== null && bridge !== null && temple !== null ? `${lens}□${bridge}-${temple}` : undefined;
+}
+
 export function mapRowToProduct(row: any): Product {
   return {
     id: row.id,
@@ -28,14 +41,14 @@ export function mapRowToProduct(row: any): Product {
     defaultMaterial: row.default_material || 'Acetate',
     defaultWeight: row.default_weight || '22g',
     defaultSpecifications: {
-      frameWidthMm: Number(row.frame_width_mm) || 140,
-      lensWidthMm: Number(row.lens_width_mm) || 52,
-      bridgeWidthMm: Number(row.bridge_width_mm) || 18,
-      templeLengthMm: Number(row.temple_length_mm) || 140,
-      frameSize: row.frame_size || '52□18-140',
-    },
+      frameWidthMm: finitePositiveOrNull(row.frame_width_mm),
+      lensWidthMm: finitePositiveOrNull(row.lens_width_mm),
+      bridgeWidthMm: finitePositiveOrNull(row.bridge_width_mm),
+      templeLengthMm: finitePositiveOrNull(row.temple_length_mm),
+      frameSize: optionalFrameSize(row),
+    } as Product['defaultSpecifications'],
     prescriptionRequired: row.prescription_required ?? true,
-    tryOnAvailable: row.try_on_available ?? true,
+    tryOnAvailable: row.try_on_available ?? false,
     hideWhenOutOfStock: row.hide_when_out_of_stock ?? true,
     status: row.status || 'ACTIVE',
     createdAt: row.created_at || new Date().toISOString(),
@@ -44,7 +57,7 @@ export function mapRowToProduct(row: any): Product {
 }
 
 export function mapProductToRow(product: Partial<Product>): any {
-  const specs = product.defaultSpecifications || { frameWidthMm: 140, lensWidthMm: 52, bridgeWidthMm: 18, templeLengthMm: 140, frameSize: '52□18-140' };
+  const specs = product.defaultSpecifications;
   return {
     id: product.id || `prod-${Date.now()}`,
     slug: product.slug || `frame-${Date.now()}`,
@@ -58,13 +71,13 @@ export function mapProductToRow(product: Partial<Product>): any {
     default_original_price: product.defaultOriginalPrice ? Number(product.defaultOriginalPrice) : null,
     default_material: product.defaultMaterial || 'Acetate',
     default_weight: product.defaultWeight || '22g',
-    frame_width_mm: Number(specs.frameWidthMm) || 140,
-    lens_width_mm: Number(specs.lensWidthMm) || 52,
-    bridge_width_mm: Number(specs.bridgeWidthMm) || 18,
-    temple_length_mm: Number(specs.templeLengthMm) || 140,
-    frame_size: specs.frameSize || `${Number(specs.lensWidthMm) || 52}□${Number(specs.bridgeWidthMm) || 18}-${Number(specs.templeLengthMm) || 140}`,
+    frame_width_mm: finitePositiveOrNull(specs?.frameWidthMm),
+    lens_width_mm: finitePositiveOrNull(specs?.lensWidthMm),
+    bridge_width_mm: finitePositiveOrNull(specs?.bridgeWidthMm),
+    temple_length_mm: finitePositiveOrNull(specs?.templeLengthMm),
+    frame_size: specs?.frameSize || null,
     prescription_required: product.prescriptionRequired ?? true,
-    try_on_available: product.tryOnAvailable ?? true,
+    try_on_available: product.tryOnAvailable ?? false,
     status: product.status || 'ACTIVE',
     updated_at: new Date().toISOString(),
   };
