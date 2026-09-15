@@ -3,23 +3,14 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { Product, ProductVariant } from '../commerce/types';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseKey =
-  process.env.SUPABASE_SERVICE_ROLE_KEY ||
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 export const supabase: SupabaseClient | null = (() => {
   if (!supabaseUrl) return null;
-
-  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    if (process.env.NODE_ENV === 'production') {
-      console.error('[FATAL] SUPABASE_SERVICE_ROLE_KEY is missing in production! Admin API will fail.');
-      // We don't throw here to avoid crashing the build, but we will return null
-      // so API routes can explicitly throw 500 when they try to use it.
-    }
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY && process.env.NODE_ENV === 'production') {
+    console.error('[FATAL] SUPABASE_SERVICE_ROLE_KEY is missing in production! Admin API will fail.');
   }
-
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  return key ? createClient(supabaseUrl, key) : null;
+  return supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
 })();
 
 export function mapRowToProduct(row: any): Product {
@@ -53,14 +44,7 @@ export function mapRowToProduct(row: any): Product {
 }
 
 export function mapProductToRow(product: Partial<Product>): any {
-  const specs = product.defaultSpecifications || {
-    frameWidthMm: 140,
-    lensWidthMm: 52,
-    bridgeWidthMm: 18,
-    templeLengthMm: 140,
-    frameSize: '52□18-140',
-  };
-
+  const specs = product.defaultSpecifications || { frameWidthMm: 140, lensWidthMm: 52, bridgeWidthMm: 18, templeLengthMm: 140, frameSize: '52□18-140' };
   return {
     id: product.id || `prod-${Date.now()}`,
     slug: product.slug || `frame-${Date.now()}`,
@@ -102,6 +86,8 @@ export function mapRowToVariant(row: any): ProductVariant {
     specificationsOverride: row.specifications_override || undefined,
     descriptionOverride: row.description_override || undefined,
     glbPath: row.glb_path || undefined,
+    vtoAssetId: row.vto_asset_id || undefined,
+    vtoCalibrationId: row.vto_calibration_id || undefined,
     inStock: row.in_stock ?? true,
     stockLevel: row.stock_level || 'high',
     unitsInStock: row.units_in_stock ?? 10,
@@ -129,6 +115,8 @@ export function mapVariantToRow(variant: Partial<ProductVariant>): any {
     specifications_override: variant.specificationsOverride || null,
     description_override: variant.descriptionOverride || null,
     glb_path: variant.glbPath || null,
+    vto_asset_id: variant.vtoAssetId || null,
+    vto_calibration_id: variant.vtoCalibrationId || null,
     in_stock: variant.inStock ?? true,
     stock_level: variant.stockLevel || 'high',
     units_in_stock: Number(variant.unitsInStock) ?? 20,
