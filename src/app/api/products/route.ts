@@ -1,15 +1,23 @@
-// src/app/api/products/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { supabase, mapProductToRow, mapVariantToRow, mapRowToProduct, mapRowToVariant } from '@/lib/supabase/service';
 import { requireManagerOrHigher } from '@/lib/auth/admin-auth';
 import { ResolvedProduct, ResolvedProductVariant } from '@/lib/commerce/types';
+import { PhysicalDimensionsSchema } from '@/lib/vto/physical-dimensions';
 
 export const dynamic = 'force-dynamic';
-const SpecificationsSchema = z.object({ frameWidthMm: z.number().optional(), lensWidthMm: z.number().optional(), bridgeWidthMm: z.number().optional(), templeLengthMm: z.number().optional(), frameSize: z.string().optional() });
+
+const ProductSpecificationsSchema = PhysicalDimensionsSchema;
+const VariantSpecificationsSchema = z.object({
+  frameWidthMm: z.number().finite().positive().optional(),
+  lensWidthMm: z.number().finite().positive().optional(),
+  bridgeWidthMm: z.number().finite().positive().optional(),
+  templeLengthMm: z.number().finite().positive().optional(),
+  frameSize: z.string().trim().min(1).optional(),
+});
 const ProductMediaSchema = z.object({ id: z.string().optional(), url: z.string().url(), altText: z.string().optional(), mediaType: z.string().optional(), isPrimary: z.boolean().optional(), sortOrder: z.number().optional() });
-const ProductSchema = z.object({ id: z.string().optional(), slug: z.string().min(1), name: z.string().min(1), collection: z.string().min(1), category: z.string().min(1), description: z.string().optional(), features: z.array(z.string()).optional(), faceShape: z.array(z.string()).optional(), defaultPrice: z.number().min(0), defaultOriginalPrice: z.number().min(0).optional(), defaultMaterial: z.string().optional(), defaultWeight: z.string().optional(), defaultSpecifications: SpecificationsSchema.optional(), prescriptionRequired: z.boolean().optional(), tryOnAvailable: z.boolean().optional(), status: z.string().optional(), media: z.array(ProductMediaSchema).optional() });
-const VariantSchema = z.object({ id: z.string().optional(), productId: z.string().min(1), slug: z.string().min(1), name: z.string().min(1), sku: z.string().min(1), colorName: z.string().min(1), colorHex: z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Must be a valid hex color'), priceOverride: z.number().min(0).optional(), originalPriceOverride: z.number().min(0).optional(), materialOverride: z.string().optional(), weightOverride: z.string().optional(), specificationsOverride: SpecificationsSchema.optional(), descriptionOverride: z.string().optional(), glbPath: z.string().optional(), vtoAssetId: z.string().optional(), vtoCalibrationId: z.string().optional(), inStock: z.boolean().optional(), stockLevel: z.string().optional(), unitsInStock: z.number().min(0).optional(), hideWhenOutOfStock: z.boolean().optional(), sortOrder: z.number().optional(), status: z.string().optional() });
+const ProductSchema = z.object({ id: z.string().optional(), slug: z.string().min(1), name: z.string().min(1), collection: z.string().min(1), category: z.string().min(1), description: z.string().optional(), features: z.array(z.string()).optional(), faceShape: z.array(z.string()).optional(), defaultPrice: z.number().min(0), defaultOriginalPrice: z.number().min(0).optional(), defaultMaterial: z.string().optional(), defaultWeight: z.string().optional(), defaultSpecifications: ProductSpecificationsSchema, prescriptionRequired: z.boolean().optional(), tryOnAvailable: z.boolean().optional(), status: z.string().optional(), media: z.array(ProductMediaSchema).optional() });
+const VariantSchema = z.object({ id: z.string().optional(), productId: z.string().min(1), slug: z.string().min(1), name: z.string().min(1), sku: z.string().min(1), colorName: z.string().min(1), colorHex: z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Must be a valid hex color'), priceOverride: z.number().min(0).optional(), originalPriceOverride: z.number().min(0).optional(), materialOverride: z.string().optional(), weightOverride: z.string().optional(), specificationsOverride: VariantSpecificationsSchema.optional(), descriptionOverride: z.string().optional(), glbPath: z.string().optional(), vtoAssetId: z.string().optional(), vtoCalibrationId: z.string().optional(), inStock: z.boolean().optional(), stockLevel: z.string().optional(), unitsInStock: z.number().min(0).optional(), hideWhenOutOfStock: z.boolean().optional(), sortOrder: z.number().optional(), status: z.string().optional() });
 
 async function resolveVtoAssetId(vtoAssetId?: string, glbPath?: string) {
   if (vtoAssetId) return vtoAssetId;
