@@ -16,26 +16,34 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
   const { data, error } = await supabase
     .from('vto_asset_calibrations')
-    .select('asset_id, name, status, vto_glb_url, physical_width_mm, lens_width_mm, bridge_width_mm, pantoscopic_tilt, bridge_x, bridge_y, bridge_z, created_at, updated_at')
+    .select('asset_id, name, status, vto_glb_url, lens_width_mm, bridge_width_mm, bridge_x, bridge_y, bridge_z, measured_native_width, width_multiplier, created_at, updated_at')
     .order('updated_at', { ascending: false });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   return NextResponse.json({
-    assets: (data || []).map((asset) => ({
-      assetId: asset.asset_id,
-      name: asset.name,
-      status: asset.status,
-      glbUrl: asset.vto_glb_url,
-      physicalWidthMm: asset.physical_width_mm,
-      lensWidthMm: asset.lens_width_mm,
-      bridgeWidthMm: asset.bridge_width_mm,
-      pantoscopicTilt: asset.pantoscopic_tilt,
-      bridge: { x: asset.bridge_x, y: asset.bridge_y, z: asset.bridge_z },
-      createdAt: asset.created_at,
-      updatedAt: asset.updated_at,
-      attachable: asset.status === 'PUBLISHED',
-    })),
+    assets: (data || []).map((asset) => {
+      const nativeWidth = Number(asset.measured_native_width);
+      const multiplier = Number(asset.width_multiplier);
+      const physicalWidthMm = Number.isFinite(nativeWidth) && Number.isFinite(multiplier) && nativeWidth > 0 && multiplier > 0
+        ? nativeWidth * multiplier
+        : null;
+      return {
+        assetId: asset.asset_id,
+        name: asset.name,
+        status: asset.status,
+        glbUrl: asset.vto_glb_url,
+        physicalWidthMm,
+        lensWidthMm: asset.lens_width_mm,
+        bridgeWidthMm: asset.bridge_width_mm,
+        measuredNativeWidth: Number.isFinite(nativeWidth) ? nativeWidth : null,
+        widthMultiplier: Number.isFinite(multiplier) ? multiplier : null,
+        bridge: { x: asset.bridge_x, y: asset.bridge_y, z: asset.bridge_z },
+        createdAt: asset.created_at,
+        updatedAt: asset.updated_at,
+        attachable: asset.status === 'PUBLISHED',
+      };
+    }),
   });
 }
 
@@ -51,7 +59,7 @@ export async function PATCH(req: NextRequest): Promise<NextResponse> {
 
   const { data: asset, error: fetchError } = await supabase
     .from('vto_asset_calibrations')
-    .select('asset_id, status, vto_glb_url, physical_width_mm')
+    .select('asset_id, status, vto_glb_url, measured_native_width, width_multiplier')
     .eq('asset_id', assetId)
     .single();
 
@@ -63,8 +71,12 @@ export async function PATCH(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: `Invalid VTO lifecycle transition: ${asset.status} -> ${nextStatus}` }, { status: 409 });
   }
 
-  if (nextStatus === 'APPROVED' && (!asset.vto_glb_url || !asset.physical_width_mm)) {
-    return NextResponse.json({ error: 'Asset must have a GLB URL and physical frame width before approval.' }, { status: 422 });
+  if (nextStatus === 'APPROVED') {
+    const nativeWidth = Number(asset.measured_native_width);
+    const multiplier = Number(asset.width_multiplier);
+    if (!asset.vto_glb_url || !Number.isFinite(nativeWidth) || nativeWidth <= 0 || !Number.isFinite(multiplier) || multiplier <= 0) {
+      return NextResponse.json({ error: 'Asset must have a verified GLB, measured native width, and physical calibration before approval.' }, { status: 422 });
+    }
   }
 
   const { error: updateError } = await supabase
