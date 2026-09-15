@@ -46,11 +46,36 @@ export async function registerStoredVtoAsset(input: RegisterStoredAssetInput) {
   const glbUrl = publicUrlData?.publicUrl;
   if (!glbUrl) throw new Error('Failed to generate public URL for storage object.');
 
-  const dbRecord = { asset_id: assetId, name: baseName, status: derivedStatus, source_glb_url: evidence.paths?.sourceGlbUrl || glbUrl, vto_glb_url: glbUrl, storage_bucket: bucketName, storage_path: storagePath, asset_content_hash: validationResult.contentHash, physical_width_mm: evidence.physicalDimensions?.frameWidthMm || null, lens_width_mm: evidence.physicalDimensions?.lensWidthMm || null, bridge_width_mm: evidence.physicalDimensions?.bridgeWidthMm || null, pantoscopic_tilt: evidence.registration?.pantoscopicTilt ?? -12, bridge_x: evidence.registration?.bridge?.x ?? 0, bridge_y: evidence.registration?.bridge?.y ?? 0, bridge_z: evidence.registration?.bridge?.z ?? 0 };
+  const declaredPhysicalWidth = Number(evidence.physicalDimensions?.frameWidthMm);
+  if (!Number.isFinite(declaredPhysicalWidth) || declaredPhysicalWidth <= 0) {
+    throw new Error('A valid physical frame width is required for VTO calibration.');
+  }
+  const widthMultiplier = declaredPhysicalWidth / measuredNativeWidth;
+  if (!Number.isFinite(widthMultiplier) || widthMultiplier <= 0) {
+    throw new Error('Could not derive a valid VTO width multiplier.');
+  }
+
+  const dbRecord = {
+    asset_id: assetId,
+    name: baseName,
+    status: derivedStatus,
+    source_glb_url: evidence.paths?.sourceGlbUrl || glbUrl,
+    vto_glb_url: glbUrl,
+    storage_bucket: bucketName,
+    storage_path: storagePath,
+    asset_content_hash: validationResult.contentHash,
+    measured_native_width: measuredNativeWidth,
+    width_multiplier: widthMultiplier,
+    lens_width_mm: evidence.physicalDimensions?.lensWidthMm || null,
+    bridge_width_mm: evidence.physicalDimensions?.bridgeWidthMm || null,
+    bridge_x: evidence.registration?.bridge?.x ?? 0,
+    bridge_y: evidence.registration?.bridge?.y ?? 0,
+    bridge_z: evidence.registration?.bridge?.z ?? 0,
+  };
   const dbResult = existingAsset ? await supabase.from('vto_asset_calibrations').update(dbRecord).eq('asset_id', assetId) : await supabase.from('vto_asset_calibrations').insert({ id: crypto.randomUUID(), ...dbRecord });
   if (dbResult.error) throw new Error(`Database registration failed: ${dbResult.error.message}`);
   await cleanupTemporaryObject(input.storagePath, input.tmpGlbUrl);
-  return { success: derivedStatus === 'REVIEW_REQUIRED', status: derivedStatus, assetId, glbPath: glbUrl, contentHash: validationResult.contentHash, rejectionNotes, message: derivedStatus === 'REVIEW_REQUIRED' ? 'VTO Asset registered successfully and is awaiting review.' : 'VTO Asset was saved in a failed validation state.' };
+  return { success: derivedStatus === 'REVIEW_REQUIRED', status: derivedStatus, assetId, glbPath: glbUrl, contentHash: validationResult.contentHash, rejectionNotes, measuredNativeWidth, widthMultiplier, message: derivedStatus === 'REVIEW_REQUIRED' ? 'VTO Asset registered successfully and is awaiting review.' : 'VTO Asset was saved in a failed validation state.' };
 }
 
 async function cleanupTemporaryObject(storagePath: string, tmpGlbUrl?: string | null) { if (!supabase) return; const candidates = new Set<string>(); if (storagePath.startsWith('tmp_')) candidates.add(storagePath); if (tmpGlbUrl?.includes('/tmp_')) candidates.add(tmpGlbUrl.split('/').pop() || ''); const paths = [...candidates].filter(Boolean); if (paths.length) await supabase.storage.from('vto-models').remove(paths).catch(() => null); }
