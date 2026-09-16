@@ -1,11 +1,15 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import dynamic from 'next/dynamic';
 import { useCameraController } from './camera/CameraController';
 import { initFaceLandmarker, processFaceLandmarks } from './tracking/FaceLandmarker';
 import { FaceDetectionResult, LetterboxViewport } from './tracking/FaceTrackingTypes';
 import VTOVideo, { computeLetterboxViewport } from './components/VTOVideo';
-import AdminVTORenderer from './components/AdminVTORenderer';
+
+const AdminVTORenderer = dynamic(() => import('./components/AdminVTORenderer'), {
+  ssr: false,
+});
 
 export type StudioTransform = {
   position: { x: number; y: number; z: number };
@@ -182,84 +186,97 @@ export default function AdminVTOCalibrationStudio({
   const displayError = error || (cameraError ? cameraError.message : null);
 
   return (
-    <div className="rounded-2xl border border-neutral-800 bg-neutral-950 overflow-hidden">
-      {/* 4:3 Fitting Area (Flexible Viewport) */}
-      <div ref={containerRef} className="relative aspect-[4/3] bg-black overflow-hidden flex items-center justify-center">
-        {/* Camera Feed */}
-        <VTOVideo
-          ref={handleVideoRef}
-          stream={stream}
-          containerWidth={containerSize.width}
-          containerHeight={containerSize.height}
-          videoWidth={videoWidth}
-          videoHeight={videoHeight}
-          mirrored={true}
-        />
-
-        {/* 3D AR Overlay */}
-        {glbUrl && (
-          <AdminVTORenderer
-            viewport={viewport}
-            glbUrl={glbUrl}
-            bridge={bridge}
-            transform={t}
-            detectionRef={latestDetectionRef}
+    <div className="rounded-2xl border border-neutral-800 bg-neutral-950 overflow-hidden flex flex-col lg:flex-row">
+      {/* 4:3 Fitting Area (Flexible Viewport) - Left Side */}
+      <div className="flex-1 border-b lg:border-b-0 lg:border-r border-neutral-800">
+        <div ref={containerRef} className="relative aspect-[4/3] bg-black overflow-hidden flex items-center justify-center w-full h-full">
+          {/* Camera Feed */}
+          <VTOVideo
+            ref={handleVideoRef}
+            stream={stream}
+            containerWidth={containerSize.width}
+            containerHeight={containerSize.height}
+            videoWidth={videoWidth}
+            videoHeight={videoHeight}
+            mirrored={true}
           />
-        )}
 
-        {/* UI Overlays */}
-        <div className="absolute left-3 top-3 flex gap-2 text-[10px] font-bold uppercase z-20">
-          <span className="rounded-full border border-neutral-700 bg-black/70 px-2 py-1">
-            Camera: {cameraState}
-          </span>
-          <span className="rounded-full border border-neutral-700 bg-black/70 px-2 py-1">
-            Face: {detectorState}
-          </span>
-        </div>
+          {/* 3D AR Overlay */}
+          {glbUrl && (
+            <AdminVTORenderer
+              viewport={viewport}
+              glbUrl={glbUrl}
+              bridge={bridge}
+              transform={t}
+              detectionRef={latestDetectionRef}
+            />
+          )}
 
-        {displayError && (
-          <div className="absolute bottom-3 left-3 right-3 rounded-lg border border-red-900 bg-red-950/80 p-2 text-xs text-red-200 z-20">
-            {displayError}
+          {/* UI Overlays */}
+          <div className="absolute left-3 top-3 flex gap-2 text-[10px] font-bold uppercase z-20">
+            <span className="rounded-full border border-neutral-700 bg-black/70 px-2 py-1">
+              Camera: {cameraState}
+            </span>
+            <span className="rounded-full border border-neutral-700 bg-black/70 px-2 py-1">
+              Face: {detectorState}
+            </span>
           </div>
-        )}
+
+          {displayError && (
+            <div className="absolute bottom-3 left-3 right-3 rounded-lg border border-red-900 bg-red-950/80 p-2 text-xs text-red-200 z-20">
+              {displayError}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Manual Calibration Controls */}
-      <div className="grid gap-3 p-4 md:grid-cols-3">
-        {(['x', 'y', 'z'] as const).map((axis) => (
-          <div key={`p-${axis}`}>
-            <label className="text-[10px] uppercase text-neutral-500">Position {axis}</label>
-            <input
-              type="number"
-              step="0.01"
-              value={t.position[axis]}
-              onChange={(e) => setVector('position', axis, Number(e.target.value))}
-              className="mt-1 w-full rounded-lg border border-neutral-800 bg-neutral-900 px-2 py-2 text-xs text-white"
-            />
+      {/* Manual Calibration Controls - Right Side */}
+      <div className="w-full lg:w-80 flex-shrink-0 bg-neutral-900/50 p-5 overflow-y-auto max-h-[600px] lg:max-h-none">
+        <h3 className="text-sm font-bold text-white mb-4">Manual Transform</h3>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            {(['x', 'y', 'z'] as const).map((axis) => (
+              <div key={`p-${axis}`} className="flex items-center justify-between gap-3">
+                <label className="text-[10px] uppercase text-neutral-500 w-16">Pos {axis}</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={t.position[axis]}
+                  onChange={(e) => setVector('position', axis, Number(e.target.value))}
+                  className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1.5 text-xs text-white"
+                />
+              </div>
+            ))}
           </div>
-        ))}
-        {(['x', 'y', 'z'] as const).map((axis) => (
-          <div key={`r-${axis}`}>
-            <label className="text-[10px] uppercase text-neutral-500">Rotation {axis}°</label>
-            <input
-              type="number"
-              step="0.1"
-              value={t.rotation[axis]}
-              onChange={(e) => setVector('rotation', axis, Number(e.target.value))}
-              className="mt-1 w-full rounded-lg border border-neutral-800 bg-neutral-900 px-2 py-2 text-xs text-white"
-            />
+          
+          <div className="space-y-2 pt-2 border-t border-neutral-800">
+            {(['x', 'y', 'z'] as const).map((axis) => (
+              <div key={`r-${axis}`} className="flex items-center justify-between gap-3">
+                <label className="text-[10px] uppercase text-neutral-500 w-16">Rot {axis}°</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={t.rotation[axis]}
+                  onChange={(e) => setVector('rotation', axis, Number(e.target.value))}
+                  className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1.5 text-xs text-white"
+                />
+              </div>
+            ))}
           </div>
-        ))}
-        <div>
-          <label className="text-[10px] uppercase text-neutral-500">Overall scale</label>
-          <input
-            type="number"
-            min="0.0001"
-            step="0.0001"
-            value={t.scale}
-            onChange={(e) => onChange({ ...t, scale: Number(e.target.value) })}
-            className="mt-1 w-full rounded-lg border border-neutral-800 bg-neutral-900 px-2 py-2 text-xs text-white"
-          />
+
+          <div className="space-y-2 pt-2 border-t border-neutral-800">
+            <div className="flex items-center justify-between gap-3">
+              <label className="text-[10px] uppercase text-neutral-500 w-16">Scale</label>
+              <input
+                type="number"
+                min="0.0001"
+                step="0.0001"
+                value={t.scale}
+                onChange={(e) => onChange({ ...t, scale: Number(e.target.value) })}
+                className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1.5 text-xs text-white"
+              />
+            </div>
+          </div>
         </div>
       </div>
     </div>
