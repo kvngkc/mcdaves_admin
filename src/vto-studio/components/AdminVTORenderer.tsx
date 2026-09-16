@@ -1,9 +1,10 @@
 'use client';
 
 import React, { Suspense, MutableRefObject, useMemo, useRef } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import { Euler, Group, Matrix4, Quaternion, Vector3 } from 'three';
+import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import { FaceDetectionResult, LetterboxViewport } from '../tracking/FaceTrackingTypes';
 import { StudioTransform, StudioBridge } from '../AdminVTOCalibrationStudio';
 
@@ -31,6 +32,19 @@ function metricPose(data: number[] | Float32Array, mirrored = true) {
   };
 }
 
+/** Register KTX2Loader globally so GLBs with KTX2 textures don't crash */
+function KTX2Setup() {
+  const { gl } = useThree();
+  useMemo(() => {
+    const ktx2Loader = new KTX2Loader();
+    ktx2Loader.setTranscoderPath('/basis/');
+    ktx2Loader.detectSupport(gl);
+    useGLTF.setDecoderPath('/basis/');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gl]);
+  return null;
+}
+
 function AdminModel({
   glbUrl,
   transform,
@@ -54,7 +68,7 @@ function AdminModel({
       root.current.visible = false;
       return;
     }
-    
+
     const pose = metricPose(detection.faceMatrix, true);
     const manualRotation = new Quaternion().setFromEuler(
       new Euler(
@@ -116,11 +130,13 @@ export function AdminVTORenderer({
         camera={{ position: [0, 0, 0], fov: fovDegrees }}
         gl={{ alpha: true, antialias: true }}
         style={{ width: '100%', height: '100%', pointerEvents: 'none' }}
+        onError={(e) => console.error('[AdminVTORenderer] Canvas error:', e)}
       >
+        <KTX2Setup />
         <ambientLight intensity={1} />
         <directionalLight position={[3, 5, 4]} intensity={1.4} />
         <directionalLight position={[-3, 2, 3]} intensity={0.6} />
-        
+
         {glbUrl && (
           <Suspense fallback={null}>
             <AdminModel
