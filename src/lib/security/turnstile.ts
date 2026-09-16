@@ -5,16 +5,18 @@ interface TurnstileVerificationResponse {
   hostname?: string;
 }
 
+const PREVIEW_TEST_SECRET = '1x0000000000000000000000000000000AA';
+
 export async function verifyTurnstileToken(token: string | null): Promise<boolean> {
   if (!token) return false;
 
-  const secretKey = process.env.TURNSTILE_SECRET_KEY;
+  const isVercelPreview = process.env.VERCEL_ENV === 'preview';
+  const configuredSecret = process.env.TURNSTILE_SECRET_KEY;
+  const secretKey = configuredSecret || (isVercelPreview ? PREVIEW_TEST_SECRET : undefined);
+
   if (!secretKey) {
-    // If not configured, fail open in development or securely warn.
-    // We fail open here to prevent locking admins out if they forget the key during setup,
-    // but in production, this should ideally fail closed.
-    console.warn('TURNSTILE_SECRET_KEY is not configured. Skipping verification.');
-    return true; 
+    console.error('TURNSTILE_SECRET_KEY is not configured.');
+    return false;
   }
 
   try {
@@ -27,6 +29,7 @@ export async function verifyTurnstileToken(token: string | null): Promise<boolea
       body: formData,
     });
 
+    if (!res.ok) return false;
     const data: TurnstileVerificationResponse = await res.json();
     return data.success;
   } catch (error) {

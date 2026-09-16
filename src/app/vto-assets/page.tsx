@@ -1,166 +1,21 @@
 'use client';
 
-import { apiFetch } from '@/lib/api-client';
 import { useCallback, useEffect, useState } from 'react';
+import { apiFetch } from '@/lib/api-client';
+import AdminVTOCalibrationStudio, { StudioTransform } from '@/vto-studio/AdminVTOCalibrationStudio';
 
-interface VtoAsset {
-  assetId: string;
-  name: string;
-  status: string;
-  glbUrl: string | null;
-  physicalWidthMm: number | null;
-  lensWidthMm: number | null;
-  bridgeWidthMm: number | null;
-  measuredNativeWidth: number | null;
-  widthMultiplier: number | null;
-  bridge: { x: number | null; y: number | null; z: number | null };
-  createdAt: string;
-  updatedAt: string;
-  attachable: boolean;
-}
-
-type CreationMode = 'upload' | 'parametric' | 'image';
-
-export default function VtoAssetsPage() {
-  const [assets, setAssets] = useState<VtoAsset[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [working, setWorking] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
-  const [mode, setMode] = useState<CreationMode>('upload');
-  const [name, setName] = useState('');
-  const [variantName, setVariantName] = useState('Custom');
-  const [frameWidthMm, setFrameWidthMm] = useState('140');
-  const [bridgeWidthMm, setBridgeWidthMm] = useState('18');
-  const [lensWidthMm, setLensWidthMm] = useState('50');
-  const [lensHeightMm, setLensHeightMm] = useState('40');
-  const [file, setFile] = useState<File | null>(null);
-  const [style, setStyle] = useState('round');
-  const [materialType, setMaterialType] = useState('acetate');
-  const [colorHex, setColorHex] = useState('#1A1A1A');
-
-  const loadAssets = useCallback(async () => {
-    setLoading(true); setError(null);
-    try {
-      const response = await apiFetch('/api/vto-assets');
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.error || 'Failed to load VTO assets');
-      setAssets(body.assets || []);
-    } catch (err) { setError(err instanceof Error ? err.message : 'Failed to load VTO assets'); }
-    finally { setLoading(false); }
-  }, []);
-
-  useEffect(() => { loadAssets(); }, [loadAssets]);
-
-  const resetMessages = () => { setError(null); setSuccess(null); };
-
-  const uploadAsset = async () => {
-    if (!file) return setError('Select a .glb file first.');
-    if (!file.name.toLowerCase().endsWith('.glb')) return setError('VTO assets must be .glb files.');
-    if (!name.trim()) return setError('Asset name is required.');
-    const width = Number(frameWidthMm);
-    const bridge = bridgeWidthMm.trim() ? Number(bridgeWidthMm) : null;
-    if (!Number.isFinite(width) || width <= 0) return setError('A valid physical frame width is required.');
-    if (bridge !== null && (!Number.isFinite(bridge) || bridge <= 0)) return setError('Bridge width must be a positive number.');
-    setWorking(true); resetMessages();
-    try {
-      const urlResponse = await apiFetch('/api/upload-model', { method: 'POST', body: JSON.stringify({ action: 'generate-url', filename: file.name }) });
-      const uploadInfo = await urlResponse.json();
-      if (!urlResponse.ok) throw new Error(uploadInfo.error || 'Failed to prepare upload');
-      const uploadResponse = await fetch(uploadInfo.signedUrl, { method: 'PUT', headers: { 'Content-Type': 'model/gltf-binary' }, body: file });
-      if (!uploadResponse.ok) throw new Error('Direct GLB upload failed');
-      const processResponse = await apiFetch('/api/upload-model', { method: 'POST', body: JSON.stringify({ action: 'process-model', rawPath: uploadInfo.path, filename: file.name, productName: name.trim(), frameWidthMm: width, bridgeWidthMm: bridge }) });
-      const result = await processResponse.json();
-      if (!processResponse.ok) throw new Error(result.error || 'VTO asset processing failed');
-      setSuccess(`GLB uploaded and registered as ${result.status}. Native width: ${Number(result.measuredNativeWidth).toFixed(4)}, multiplier: ${Number(result.widthMultiplier).toFixed(4)}.`);
-      setFile(null); setName('');
-      const input = document.getElementById('vto-glb-file') as HTMLInputElement | null;
-      if (input) input.value = '';
-      await loadAssets();
-    } catch (err) { setError(err instanceof Error ? err.message : 'VTO asset upload failed'); }
-    finally { setWorking(false); }
-  };
-
-  const generateParametric = async () => {
-    if (!name.trim()) return setError('Asset name is required.');
-    setWorking(true); resetMessages();
-    try {
-      const response = await apiFetch('/api/generate-model', { method: 'POST', body: JSON.stringify({ productName: name.trim(), variantName: variantName.trim() || 'Custom', style, materialType, colorHex, frameWidthMm: Number(frameWidthMm), lensWidthMm: Number(lensWidthMm), lensHeightMm: Number(lensHeightMm), bridgeWidthMm: Number(bridgeWidthMm) }) });
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.error || 'Parametric GLB generation failed');
-      setSuccess(`Parametric GLB generated and registered as ${body.status || 'REVIEW_REQUIRED'}.`);
-      setName(''); await loadAssets();
-    } catch (err) { setError(err instanceof Error ? err.message : 'Parametric generation failed'); }
-    finally { setWorking(false); }
-  };
-
-  const generateFromImage = async () => {
-    if (!file) return setError('Select a reference image first.');
-    if (!name.trim()) return setError('Asset name is required.');
-    const form = new FormData();
-    form.append('file', file); form.append('productName', name.trim()); form.append('variantName', variantName.trim() || 'Custom');
-    form.append('frameWidthMm', frameWidthMm); form.append('bridgeWidthMm', bridgeWidthMm); form.append('lensWidthMm', lensWidthMm); form.append('lensHeightMm', lensHeightMm);
-    setWorking(true); resetMessages();
-    try {
-      const response = await apiFetch('/api/generate-model', { method: 'POST', body: form });
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.error || 'Image-to-GLB generation failed');
-      setSuccess(`Reference image converted to GLB and registered as ${body.status || 'REVIEW_REQUIRED'}.`);
-      setFile(null); setName('');
-      const input = document.getElementById('vto-source-file') as HTMLInputElement | null;
-      if (input) input.value = '';
-      await loadAssets();
-    } catch (err) { setError(err instanceof Error ? err.message : 'Image-to-GLB generation failed'); }
-    finally { setWorking(false); }
-  };
-
-  const transition = async (asset: VtoAsset, status: 'APPROVED' | 'PUBLISHED') => {
-    setWorking(true); resetMessages();
-    try {
-      const response = await apiFetch('/api/vto-assets', { method: 'PATCH', body: JSON.stringify({ assetId: asset.assetId, status }) });
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.error || `Could not change status to ${status}`);
-      setSuccess(`${asset.name} is now ${status}.`); await loadAssets();
-    } catch (err) { setError(err instanceof Error ? err.message : 'Lifecycle update failed'); }
-    finally { setWorking(false); }
-  };
-
-  const numericFields = (
-    <>
-      <label className="text-xs text-neutral-400">Frame width (mm)<input value={frameWidthMm} onChange={e => setFrameWidthMm(e.target.value)} inputMode="decimal" className="mt-1 w-full rounded-xl bg-neutral-950 border border-neutral-800 px-3 py-2.5 text-sm text-white" /></label>
-      <label className="text-xs text-neutral-400">Bridge width (mm)<input value={bridgeWidthMm} onChange={e => setBridgeWidthMm(e.target.value)} inputMode="decimal" className="mt-1 w-full rounded-xl bg-neutral-950 border border-neutral-800 px-3 py-2.5 text-sm text-white" /></label>
-      <label className="text-xs text-neutral-400">Lens width (mm)<input value={lensWidthMm} onChange={e => setLensWidthMm(e.target.value)} inputMode="decimal" className="mt-1 w-full rounded-xl bg-neutral-950 border border-neutral-800 px-3 py-2.5 text-sm text-white" /></label>
-      <label className="text-xs text-neutral-400">Lens height (mm)<input value={lensHeightMm} onChange={e => setLensHeightMm(e.target.value)} inputMode="decimal" className="mt-1 w-full rounded-xl bg-neutral-950 border border-neutral-800 px-3 py-2.5 text-sm text-white" /></label>
-    </>
-  );
-
-  return (
-    <main className="min-h-screen bg-neutral-950 text-neutral-200 p-4 sm:p-8 lg:p-10 space-y-8">
-      <header><h1 className="text-2xl sm:text-3xl font-black text-white">VTO Asset Manager</h1><p className="text-sm text-neutral-500 mt-1 max-w-3xl">Create or ingest the actual 3D asset, let the server measure and calibrate it, then review and publish it for product variants.</p></header>
-      {(error || success) && <div className={`rounded-xl border p-4 text-sm ${error ? 'border-red-900/60 bg-red-950/30 text-red-200' : 'border-emerald-900/60 bg-emerald-950/30 text-emerald-200'}`}>{error || success}</div>}
-
-      <section className="rounded-2xl border border-neutral-800 bg-neutral-900/50 p-5 sm:p-6 space-y-5">
-        <div className="flex flex-wrap gap-2 border-b border-neutral-800 pb-4">
-          {([['upload', 'Upload GLB'], ['parametric', 'Generate GLB'], ['image', 'Image → GLB']] as const).map(([value, label]) => <button key={value} onClick={() => { setMode(value); resetMessages(); }} className={`rounded-lg px-4 py-2 text-sm font-bold ${mode === value ? 'bg-brand-600 text-white' : 'bg-neutral-800 text-neutral-400 hover:text-white'}`}>{label}</button>)}
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <label className="text-xs text-neutral-400">Asset / product name<input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Slightly Retro Black" className="mt-1 w-full rounded-xl bg-neutral-950 border border-neutral-800 px-3 py-2.5 text-sm text-white" /></label>
-          {mode !== 'upload' && <label className="text-xs text-neutral-400">Variant name<input value={variantName} onChange={e => setVariantName(e.target.value)} className="mt-1 w-full rounded-xl bg-neutral-950 border border-neutral-800 px-3 py-2.5 text-sm text-white" /></label>}
-          {mode === 'upload' && <label className="text-xs text-neutral-400">Physical frame width (mm)<input value={frameWidthMm} onChange={e => setFrameWidthMm(e.target.value)} inputMode="decimal" placeholder="e.g. 140" className="mt-1 w-full rounded-xl bg-neutral-950 border border-neutral-800 px-3 py-2.5 text-sm text-white" /></label>}
-          {mode === 'upload' && <label className="text-xs text-neutral-400">Bridge width (mm), optional<input value={bridgeWidthMm} onChange={e => setBridgeWidthMm(e.target.value)} inputMode="decimal" placeholder="e.g. 18" className="mt-1 w-full rounded-xl bg-neutral-950 border border-neutral-800 px-3 py-2.5 text-sm text-white" /></label>}
-        </div>
-
-        {mode === 'upload' && <div className="space-y-4"><label className="text-xs text-neutral-400 block">Actual GLB file<input id="vto-glb-file" type="file" accept=".glb,model/gltf-binary" onChange={e => setFile(e.target.files?.[0] || null)} className="mt-1 w-full rounded-xl bg-neutral-950 border border-neutral-800 px-3 py-2 text-xs text-neutral-300 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-600 file:px-3 file:py-1.5 file:text-xs file:text-white" />{file && <span className="block mt-1 truncate text-[11px] text-brand-300">Selected: {file.name}</span>}</label><button onClick={uploadAsset} disabled={working || !file} className="rounded-xl bg-brand-600 hover:bg-brand-500 disabled:opacity-50 px-5 py-2.5 text-sm font-bold text-white">{working ? 'Uploading & processing…' : 'Upload & Register VTO Asset'}</button></div>}
-
-        {mode === 'parametric' && <div className="space-y-4"><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">{numericFields}<label className="text-xs text-neutral-400">Style<select value={style} onChange={e => setStyle(e.target.value)} className="mt-1 w-full rounded-xl bg-neutral-950 border border-neutral-800 px-3 py-2.5 text-sm text-white"><option value="round">Round</option><option value="square">Square</option><option value="aviator">Aviator</option><option value="cat-eye">Cat Eye</option></select></label><label className="text-xs text-neutral-400">Material<select value={materialType} onChange={e => setMaterialType(e.target.value)} className="mt-1 w-full rounded-xl bg-neutral-950 border border-neutral-800 px-3 py-2.5 text-sm text-white"><option value="acetate">Acetate</option><option value="metal">Metal</option><option value="tortoise">Tortoise</option></select></label><label className="text-xs text-neutral-400">Frame color<div className="mt-1 flex items-center gap-2"><input aria-label="Choose frame color" type="color" value={colorHex} onChange={e => setColorHex(e.target.value)} className="h-10 w-14 cursor-pointer rounded-lg border border-neutral-700 bg-neutral-900 p-1" /><span className="font-mono text-xs text-neutral-400">{colorHex}</span></div></label></div><button onClick={generateParametric} disabled={working} className="rounded-xl bg-brand-600 hover:bg-brand-500 disabled:opacity-50 px-5 py-2.5 text-sm font-bold text-white">{working ? 'Generating & registering…' : 'Generate & Register VTO Asset'}</button></div>}
-
-        {mode === 'image' && <div className="space-y-4"><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">{numericFields}</div><label className="text-xs text-neutral-400 block">Reference image<input id="vto-source-file" type="file" accept="image/png,image/jpeg,image/webp" onChange={e => setFile(e.target.files?.[0] || null)} className="mt-1 w-full rounded-xl bg-neutral-950 border border-neutral-800 px-3 py-2 text-xs text-neutral-300 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-600 file:px-3 file:py-1.5 file:text-xs file:text-white" />{file && <span className="block mt-1 truncate text-[11px] text-brand-300">Selected: {file.name}</span>}</label><button onClick={generateFromImage} disabled={working || !file} className="rounded-xl bg-brand-600 hover:bg-brand-500 disabled:opacity-50 px-5 py-2.5 text-sm font-bold text-white">{working ? 'Converting & registering…' : 'Convert Image to GLB & Register'}</button></div>}
-      </section>
-
-      <section className="space-y-4"><div className="flex items-center justify-between"><h2 className="text-lg font-bold text-white">Review and publish</h2><button onClick={loadAssets} disabled={loading} className="text-xs text-brand-400 hover:text-brand-300">Refresh</button></div>
-        {loading ? <div className="text-sm text-neutral-500">Loading VTO assets…</div> : assets.length === 0 ? <div className="rounded-2xl border border-neutral-800 p-8 text-sm text-neutral-500">No VTO assets registered.</div> : <div className="grid gap-4">{assets.map(asset => <article key={asset.assetId} className="rounded-2xl border border-neutral-800 bg-neutral-900/40 p-5"><div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4"><div><h3 className="font-bold text-white">{asset.name}</h3><p className="text-[11px] font-mono text-neutral-600 mt-1">{asset.assetId}</p><p className="text-xs text-neutral-500 mt-2">Physical {asset.physicalWidthMm ?? '—'} mm · Native {asset.measuredNativeWidth ?? '—'} · Multiplier {asset.widthMultiplier?.toFixed(4) ?? '—'} · Bridge {asset.bridgeWidthMm ?? '—'} mm</p></div><div className="flex flex-wrap items-center gap-3"><span className="rounded-full border border-neutral-700 px-3 py-1 text-xs font-bold">{asset.status}</span>{asset.status === 'REVIEW_REQUIRED' && <button disabled={working} onClick={() => transition(asset, 'APPROVED')} className="rounded-lg bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50 px-3 py-2 text-xs font-bold text-white">Approve</button>}{asset.status === 'APPROVED' && <button disabled={working} onClick={() => transition(asset, 'PUBLISHED')} className="rounded-lg bg-brand-600 hover:bg-brand-500 disabled:opacity-50 px-3 py-2 text-xs font-bold text-white">Publish</button>}{asset.glbUrl && <a href={asset.glbUrl} target="_blank" rel="noreferrer" className="text-xs text-brand-400 hover:text-brand-300">GLB</a>}</div></div></article>)}</div>}
-      </section>
-    </main>
-  );
+type Vec3 = { x:number; y:number; z:number };
+type Variant = { id:string; name:string; sku?:string; product_id:string };
+type Asset = { assetId:string; name:string; status:string; glbUrl:string|null; storagePath:string|null; physicalDimensions:any; bridge:Vec3; manualTransform:StudioTransform|null; sourceSizeBytes:number|null; updatedAt:string; attachable:boolean };
+const initialTransform:StudioTransform = { position:{x:0,y:0,z:0}, rotation:{x:0,y:0,z:0}, scale:1 };
+function NumberField({label,value,onChange,step='0.001'}:{label:string;value:number;onChange:(v:number)=>void;step?:string}){return <label className="block text-xs text-neutral-400">{label}<input type="number" step={step} value={value} onChange={e=>onChange(Number(e.target.value))} className="mt-1 w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-white"/></label>}
+export default function VtoAssetsPage(){
+ const[assets,setAssets]=useState<Asset[]>([]),[variants,setVariants]=useState<Variant[]>([]),[selected,setSelected]=useState<Asset|null>(null);const[variantId,setVariantId]=useState(''),[file,setFile]=useState<File|null>(null);const[transform,setTransform]=useState<StudioTransform>(initialTransform),[dimensions,setDimensions]=useState({frameWidthMm:'',lensWidthMm:'',bridgeWidthMm:'',templeLengthMm:''});const[working,setWorking]=useState(false),[message,setMessage]=useState(''),[error,setError]=useState('');
+ const load=useCallback(async()=>{const r=await apiFetch('/api/vto-assets');const b=await r.json();if(r.ok)setAssets(b.assets||[]);else setError(b.error||'Failed to load VTO assets')},[]);
+ useEffect(()=>{load();(async()=>{const r=await apiFetch('/api/vto-assets/variants');const b=await r.json();if(r.ok)setVariants(b.variants||[])})()},[load]);
+ const choose=(a:Asset)=>{setSelected(a);setTransform(a.manualTransform||initialTransform);setDimensions({frameWidthMm:a.physicalDimensions?.frameWidthMm?.toString()||'',lensWidthMm:a.physicalDimensions?.lensWidthMm?.toString()||'',bridgeWidthMm:a.physicalDimensions?.bridgeWidthMm?.toString()||'',templeLengthMm:a.physicalDimensions?.templeLengthMm?.toString()||''});setMessage('');setError('')};
+ const upload=async()=>{if(!file||!variantId)return setError('Select a GLB and product variant.');setWorking(true);setError('');setMessage('Preparing secure upload…');try{const r=await apiFetch('/api/vto-assets/upload',{method:'POST',body:JSON.stringify({action:'prepare',variantId,filename:file.name,sizeBytes:file.size})});const b=await r.json();if(!r.ok)throw new Error(b.error||'Upload preparation failed');const put=await fetch(b.signedUrl,{method:'PUT',headers:{'Content-Type':'model/gltf-binary'},body:file});if(!put.ok)throw new Error('GLB upload failed');setMessage('Verifying GLB in Storage…');const vr=await apiFetch('/api/vto-assets/upload',{method:'POST',body:JSON.stringify({action:'verify',assetId:b.assetId,variantId,filename:file.name,sizeBytes:file.size,path:b.path})});const vb=await vr.json();if(!vr.ok)throw new Error(vb.error||'GLB verification failed');setFile(null);await load();const ar=await apiFetch(`/api/vto-assets?assetId=${encodeURIComponent(vb.assetId)}`);const ab=await ar.json();if(ar.ok&&ab.assets?.[0])choose(ab.assets[0]);setVariantId('');setMessage('GLB verified and registered. Calibrate it before approval.')}catch(e){setError(e instanceof Error?e.message:'Upload failed')}finally{setWorking(false)}};
+ const saveCalibration=async()=>{if(!selected)return;setWorking(true);setError('');setMessage('Saving calibration…');try{const physicalDimensions=Object.fromEntries(Object.entries(dimensions).map(([k,v])=>[k,v===''||Number(v)===0?null:Number(v)]));const r=await apiFetch('/api/vto-assets/calibrate',{method:'POST',body:JSON.stringify({assetId:selected.assetId,manualTransform:transform,bridge:selected.bridge,physicalDimensions})});const b=await r.json();if(!r.ok)throw new Error(b.error||'Calibration save failed');await load();const ar=await apiFetch(`/api/vto-assets?assetId=${encodeURIComponent(selected.assetId)}`);const ab=await ar.json();if(ar.ok&&ab.assets?.[0])choose(ab.assets[0]);setMessage('Manual calibration saved.')}catch(e){setError(e instanceof Error?e.message:'Calibration save failed')}finally{setWorking(false)}};
+ const transition=async(status:'APPROVED'|'PUBLISHED')=>{if(!selected)return;setWorking(true);setError('');setMessage(`Changing status to ${status}…`);try{const r=await apiFetch('/api/vto-assets',{method:'PATCH',body:JSON.stringify({assetId:selected.assetId,status})});const b=await r.json();if(!r.ok)throw new Error(b.error||'Lifecycle transition failed');await load();const ar=await apiFetch(`/api/vto-assets?assetId=${encodeURIComponent(selected.assetId)}`);const ab=await ar.json();if(ar.ok&&ab.assets?.[0])choose(ab.assets[0]);setMessage(`Asset is now ${status}.`)}catch(e){setError(e instanceof Error?e.message:'Lifecycle transition failed')}finally{setWorking(false)}};
+ return <main className="min-h-screen bg-neutral-950 p-5 text-neutral-200 sm:p-8 space-y-8"><header><h1 className="text-3xl font-black text-white">VTO Asset Manager</h1><p className="mt-1 max-w-3xl text-sm text-neutral-500">Single authority for GLB upload, live calibration, approval, publication and variant linkage. The uploaded GLB remains the production GLB.</p></header>{(error||message)&&<div className={`rounded-xl border p-4 text-sm ${error?'border-red-900 bg-red-950/30 text-red-200':'border-emerald-900 bg-emerald-950/30 text-emerald-200'}`}>{error||message}</div>}<section className="rounded-2xl border border-neutral-800 bg-neutral-900/50 p-5 space-y-5"><h2 className="font-bold text-white">1. Upload production GLB</h2><div className="grid gap-4 md:grid-cols-2"><label className="text-xs text-neutral-400">Product variant<select value={variantId} onChange={e=>setVariantId(e.target.value)} className="mt-1 w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2.5 text-sm text-white"><option value="">Select variant</option>{variants.map(v=><option key={v.id} value={v.id}>{v.name}{v.sku?` · ${v.sku}`:''}</option>)}</select></label><label className="text-xs text-neutral-400">GLB file<input type="file" accept=".glb,model/gltf-binary" onChange={e=>setFile(e.target.files?.[0]||null)} className="mt-1 w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-300"/></label></div><button disabled={working||!file||!variantId} onClick={upload} className="rounded-xl bg-brand-600 px-5 py-2.5 text-sm font-bold text-white disabled:opacity-50">{working?'Working…':'Upload GLB'}</button></section><section><div className="mb-3 flex items-center justify-between"><h2 className="text-lg font-bold text-white">2. Assets</h2><button onClick={load} className="text-xs text-brand-400">Refresh</button></div><div className="grid gap-3">{assets.map(a=><button key={a.assetId} onClick={()=>choose(a)} className={`rounded-xl border p-4 text-left ${selected?.assetId===a.assetId?'border-brand-500 bg-brand-950/20':'border-neutral-800 bg-neutral-900/40'}`}><div className="flex items-center justify-between"><span className="font-bold text-white">{a.name}</span><span className="text-[10px] font-black uppercase tracking-wider text-neutral-400">{a.status}</span></div><div className="mt-1 text-xs text-neutral-500">{a.assetId} · {a.sourceSizeBytes?`${(a.sourceSizeBytes/1024/1024).toFixed(2)} MB`:'size pending'}</div></button>)}{!assets.length&&<div className="rounded-xl border border-dashed border-neutral-800 p-8 text-center text-sm text-neutral-500">No VTO assets yet.</div>}</div></section>{selected&&<section className="grid gap-6 xl:grid-cols-[1.35fr_.65fr]"><div className="space-y-5"><AdminVTOCalibrationStudio glbUrl={selected.glbUrl||''} bridge={selected.bridge} transform={transform} onChange={setTransform}/><div className="rounded-2xl border border-neutral-800 bg-neutral-900/50 p-5 space-y-5"><div><h2 className="text-lg font-bold text-white">4. Physical metadata</h2><p className="mt-1 text-xs text-neutral-500">Optional optical measurements are stored as metadata. They do not automatically alter model scale.</p></div><div className="grid gap-4 md:grid-cols-4"><NumberField label="Frame width mm" step="0.1" value={Number(dimensions.frameWidthMm)||0} onChange={v=>setDimensions(d=>({...d,frameWidthMm:String(v)}))}/><NumberField label="Lens width mm" step="0.1" value={Number(dimensions.lensWidthMm)||0} onChange={v=>setDimensions(d=>({...d,lensWidthMm:String(v)}))}/><NumberField label="Bridge width mm" step="0.1" value={Number(dimensions.bridgeWidthMm)||0} onChange={v=>setDimensions(d=>({...d,bridgeWidthMm:String(v)}))}/><NumberField label="Temple length mm" step="0.1" value={Number(dimensions.templeLengthMm)||0} onChange={v=>setDimensions(d=>({...d,templeLengthMm:String(v)}))}/></div><div className="flex flex-wrap gap-3"><button disabled={working} onClick={saveCalibration} className="rounded-xl bg-brand-600 px-5 py-2.5 text-sm font-bold text-white disabled:opacity-50">Save calibration</button>{selected.status==='CALIBRATED'&&<button disabled={working} onClick={()=>transition('APPROVED')} className="rounded-xl border border-neutral-700 px-5 py-2.5 text-sm font-bold text-white">Approve</button>}{selected.status==='APPROVED'&&<button disabled={working} onClick={()=>transition('PUBLISHED')} className="rounded-xl bg-emerald-700 px-5 py-2.5 text-sm font-bold text-white">Publish</button>}</div></div></div><aside className="rounded-2xl border border-neutral-800 bg-neutral-900/50 p-5 h-fit space-y-4"><h2 className="font-bold text-white">Asset contract</h2><dl className="space-y-3 text-xs"><div><dt className="text-neutral-500">Status</dt><dd className="font-bold text-white">{selected.status}</dd></div><div><dt className="text-neutral-500">Production GLB</dt><dd className="break-all text-neutral-300">{selected.storagePath||'not available'}</dd></div><div><dt className="text-neutral-500">Scale</dt><dd className="font-mono text-white">{transform.scale}</dd></div><div><dt className="text-neutral-500">Position</dt><dd className="font-mono text-white">{JSON.stringify(transform.position)}</dd></div><div><dt className="text-neutral-500">Rotation</dt><dd className="font-mono text-white">{JSON.stringify(transform.rotation)}</dd></div></dl><div className="rounded-xl border border-emerald-900/50 bg-emerald-950/20 p-3 text-xs text-emerald-200">Live camera + MediaPipe preview is active. Adjust the transform against your face, save, then approve and publish.</div></aside></section>}</main>;
 }
