@@ -44,10 +44,12 @@ export async function POST(req: NextRequest) {
   const sourceHash = createHash('sha256').update(bytes).digest('hex');
   const publicUrl = supabase.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
   const { error: insertError } = await supabase.from('vto_asset_calibrations').insert({
+    id: assetId,
     asset_id: assetId,
     name: variant.name,
     status: 'UPLOADED',
     vto_glb_url: publicUrl,
+    source_glb_url: publicUrl,
     storage_bucket: BUCKET,
     storage_path: path,
     source_storage_path: path,
