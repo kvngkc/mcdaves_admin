@@ -74,14 +74,35 @@ export default function AdminVTOCalibrationStudio({
     ? 'live'
     : 'starting…';
 
-  // Attach stream to the video element whenever either changes
+  // Ref callback — tells CameraController which element to use for dimension tracking.
+  // Also immediately attaches stream if already available when the element mounts.
   const handleVideoRef = useCallback(
     (el: HTMLVideoElement | null) => {
       videoRef.current = el;
       attachVideo(el);
+      // If stream is already ready when element mounts, attach immediately
+      if (el && stream) {
+        if (el.srcObject !== stream) el.srcObject = stream;
+        el.play().catch(() => {});
+      }
     },
-    [attachVideo],
+    [attachVideo, stream],
   );
+
+  // Direct stream injection — most reliable path, independent of CameraController timing.
+  // Fires whenever the stream or the video element changes; calls play() explicitly.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (stream) {
+      if (video.srcObject !== stream) {
+        video.srcObject = stream;
+      }
+      video.play().catch(() => {});
+    } else {
+      video.srcObject = null;
+    }
+  }, [stream]);
 
   // ── MediaPipe Detector ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -152,8 +173,8 @@ export default function AdminVTOCalibrationStudio({
     <div className="rounded-2xl border border-neutral-800 bg-neutral-950 overflow-hidden flex flex-col lg:flex-row">
       {/* ── Left: Video + AR overlay ── */}
       <div className="flex-1 min-w-0 border-b lg:border-b-0 lg:border-r border-neutral-800">
-        {/* Fixed 4:3 aspect container */}
-        <div className="relative w-full" style={{ paddingBottom: '75%' /* = 3/4 = 4:3 ratio */ }}>
+        {/* Explicit height — never collapses regardless of parent grid/flex context */}
+        <div className="relative" style={{ height: '380px' }}>
           {/* Camera feed */}
           <video
             ref={handleVideoRef}
