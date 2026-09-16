@@ -35,12 +35,6 @@ export default function VariantModal({ isOpen, onClose, product, onSuccess, onEr
   const handleAddVariant = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newVariantData.colorName?.trim()) return onError('Color name is required');
-    if (!glbFile) return onError('Upload the GLB for this variant before adding it');
-    if (!glbFile.name.toLowerCase().endsWith('.glb')) return onError('VTO assets must be .glb files');
-
-    const frameWidthMm = product.defaultSpecifications?.frameWidthMm;
-    const bridgeWidthMm = product.defaultSpecifications?.bridgeWidthMm;
-    if (!frameWidthMm || frameWidthMm <= 0) return onError('A valid product frame width is required before uploading the variant GLB');
 
     const varSlug = newVariantData.slug?.trim() || newVariantData.colorName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
     const sku = newVariantData.sku?.trim() || `${product.slug.slice(0, 3).toUpperCase()}-${varSlug.slice(0, 3).toUpperCase()}-${Date.now().toString().slice(-2)}`;
@@ -61,7 +55,6 @@ export default function VariantModal({ isOpen, onClose, product, onSuccess, onEr
     };
 
     setIsSavingVariant(true);
-    let createdVariantId = '';
     try {
       const createResponse = await apiFetch('/api/products', {
         method: 'POST',
@@ -70,57 +63,12 @@ export default function VariantModal({ isOpen, onClose, product, onSuccess, onEr
       });
       const createBody = await createResponse.json();
       if (!createResponse.ok) throw new Error(createBody.error || 'Failed to add variant');
-      createdVariantId = createBody.variant?.id || variantPayload.id;
 
-      const urlResponse = await apiFetch('/api/upload-model', {
-        method: 'POST',
-        body: JSON.stringify({ action: 'generate-url', filename: glbFile.name }),
-      });
-      const uploadInfo = await urlResponse.json();
-      if (!urlResponse.ok) throw new Error(uploadInfo.error || 'Failed to prepare GLB upload');
-
-      const directUpload = await fetch(uploadInfo.signedUrl, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'model/gltf-binary' },
-        body: glbFile,
-      });
-      if (!directUpload.ok) throw new Error('Direct GLB upload failed');
-
-      const processResponse = await apiFetch('/api/upload-model', {
-        method: 'POST',
-        body: JSON.stringify({
-          action: 'process-model',
-          rawPath: uploadInfo.path,
-          filename: glbFile.name,
-          productName: product.name,
-          variantName: newVariantData.colorName.trim(),
-          frameWidthMm,
-          bridgeWidthMm: bridgeWidthMm || null,
-        }),
-      });
-      const processBody = await processResponse.json();
-      if (!processResponse.ok) throw new Error(processBody.error || 'VTO asset processing failed');
-      if (!processBody.vtoAssetId) throw new Error('VTO processing completed without returning an asset ID');
-
-      const attachResponse = await apiFetch('/api/products', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'UPDATE_VARIANT',
-          variant: { ...variantPayload, id: createdVariantId, vtoAssetId: processBody.vtoAssetId },
-        }),
-      });
-      const attachBody = await attachResponse.json();
-      if (!attachResponse.ok) throw new Error(attachBody.error || 'VTO asset was created but could not be attached to the variant');
-
-      onSuccess(`Variant "${variantPayload.colorName}" created and its GLB is awaiting VTO review`);
+      onSuccess(`Variant "${variantPayload.colorName}" created. You can attach & calibrate its 3D model in the VTO Asset Manager.`);
       setNewVariantData({ ...emptyVariant });
       setGlbFile(null);
     } catch (err) {
-      onError(err instanceof Error ? err.message : 'Error creating variant and processing GLB');
-      if (createdVariantId) {
-        await apiFetch(`/api/products?type=variant&id=${createdVariantId}`, { method: 'DELETE' }).catch(() => null);
-      }
+      onError(err instanceof Error ? err.message : 'Error creating variant');
     } finally {
       setIsSavingVariant(false);
     }
@@ -151,7 +99,7 @@ export default function VariantModal({ isOpen, onClose, product, onSuccess, onEr
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6" onClick={onClose}>
       <div className="bg-neutral-900 border border-neutral-800 rounded-3xl max-w-3xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
         <div className="p-5 sm:p-6 border-b border-neutral-800 flex items-center justify-between">
-          <div className="flex items-center gap-3"><div className="w-9 h-9 rounded-xl bg-brand-600/20 text-brand-400 flex items-center justify-center"><Palette className="w-5 h-5" /></div><div><h2 className="text-lg font-bold text-white">Variants & Colors: {product.name}</h2><p className="text-xs text-neutral-400">Create the variant and process its GLB in one workflow.</p></div></div>
+          <div className="flex items-center gap-3"><div className="w-9 h-9 rounded-xl bg-brand-600/20 text-brand-400 flex items-center justify-center"><Palette className="w-5 h-5" /></div><div><h2 className="text-lg font-bold text-white">Variants & Colors: {product.name}</h2><p className="text-xs text-neutral-400">Configure product colorways, stock levels, and pricing overrides.</p></div></div>
           <button type="button" onClick={onClose} className="p-2 rounded-xl bg-neutral-800 text-neutral-300"><X className="w-5 h-5" /></button>
         </div>
 
@@ -169,20 +117,23 @@ export default function VariantModal({ isOpen, onClose, product, onSuccess, onEr
           </div>
 
           <form onSubmit={handleAddVariant} className="p-4 bg-neutral-950 rounded-2xl border border-neutral-800 space-y-4 text-xs">
-            <div className="flex items-center gap-2"><Plus className="w-4 h-4 text-brand-400" /><span className="font-bold text-white">Add Variant + GLB</span></div>
+            <div className="flex items-center gap-2"><Plus className="w-4 h-4 text-brand-400" /><span className="font-bold text-white">Add Variant</span></div>
             <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
               <div><label className="text-neutral-400">Color Name *</label><input required value={newVariantData.colorName || ''} onChange={(e) => setNewVariantData({ ...newVariantData, colorName: e.target.value })} className="w-full mt-1 px-3 py-2 bg-neutral-900 border border-neutral-700 rounded-xl text-white" /></div>
               <div><label className="text-neutral-400">Color</label><div className="mt-1 flex items-center gap-2"><input aria-label="Choose variant color" type="color" value={newVariantData.colorHex || '#000000'} onChange={(e) => setNewVariantData({ ...newVariantData, colorHex: e.target.value })} className="h-10 w-14 cursor-pointer rounded-lg border border-neutral-700 bg-neutral-900 p-1" /><span className="font-mono text-xs text-neutral-400">{newVariantData.colorHex || '#000000'}</span></div></div>
               <div><label className="text-neutral-400">Units in Stock *</label><input required type="number" min="0" value={newVariantData.unitsInStock ?? 10} onChange={(e) => setNewVariantData({ ...newVariantData, unitsInStock: Math.max(0, Number(e.target.value) || 0), inStock: Number(e.target.value) > 0 })} className="w-full mt-1 px-3 py-2 bg-neutral-900 border border-neutral-700 rounded-xl text-white font-mono" /></div>
               <div><label className="text-neutral-400">Price Override (₦)</label><input type="number" value={newVariantData.priceOverride || ''} onChange={(e) => setNewVariantData({ ...newVariantData, priceOverride: e.target.value ? Number(e.target.value) : undefined })} className="w-full mt-1 px-3 py-2 bg-neutral-900 border border-neutral-700 rounded-xl text-white" /></div>
             </div>
-            <div className="p-3 bg-neutral-900/60 rounded-xl border border-neutral-800 space-y-2">
-              <label htmlFor="variant-glb-file" className="text-neutral-300 font-semibold block">GLB for this variant *</label>
-              <input id="variant-glb-file" required type="file" accept=".glb,model/gltf-binary" onChange={(e) => setGlbFile(e.target.files?.[0] || null)} className="w-full px-3 py-2 bg-neutral-950 border border-neutral-700 rounded-xl text-xs text-neutral-300 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-600 file:px-3 file:py-1.5 file:text-xs file:text-white" />
-              {glbFile && <p className="text-[10px] text-brand-300 truncate">Selected: {glbFile.name}</p>}
-              <p className="text-[10px] text-neutral-500">The existing product optical dimensions are used by the current VTO processing pipeline. No duplicate dimension entry is created here.</p>
+            <div className="p-3 bg-neutral-900/60 rounded-xl border border-neutral-800 space-y-1">
+              <span className="text-neutral-300 font-semibold block">3D Virtual Try-On Model</span>
+              <p className="text-[11px] text-neutral-400">
+                3D GLBs are uploaded, calibrated on live camera, and linked to variants in the{' '}
+                <a href="/vto-assets" className="text-brand-400 underline font-medium hover:text-brand-300">
+                  VTO Asset Manager
+                </a>.
+              </p>
             </div>
-            <div className="flex justify-end pt-2"><button type="submit" disabled={isSavingVariant || !glbFile} className="px-5 py-2 bg-brand-600 hover:bg-brand-500 disabled:bg-neutral-800 text-white rounded-xl font-bold transition flex items-center gap-1.5"><span>{isSavingVariant ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}</span><span>{isSavingVariant ? 'Creating, uploading & processing...' : 'Create Variant & Process GLB'}</span></button></div>
+            <div className="flex justify-end pt-2"><button type="submit" disabled={isSavingVariant} className="px-5 py-2 bg-brand-600 hover:bg-brand-500 disabled:bg-neutral-800 text-white rounded-xl font-bold transition flex items-center gap-1.5"><span>{isSavingVariant ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}</span><span>{isSavingVariant ? 'Creating variant...' : 'Add Variant'}</span></button></div>
           </form>
         </div>
 

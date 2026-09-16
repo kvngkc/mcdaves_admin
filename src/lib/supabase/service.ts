@@ -10,7 +10,14 @@ export const supabase: SupabaseClient | null = (() => {
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY && process.env.NODE_ENV === 'production') {
     console.error('[FATAL] SUPABASE_SERVICE_ROLE_KEY is missing in production! Admin API will fail.');
   }
-  return supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
+  return supabaseKey
+    ? createClient(supabaseUrl, supabaseKey, {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+        },
+      })
+    : null;
 })();
 
 function finitePositiveOrNull(value: unknown): number | null {
