@@ -1,10 +1,24 @@
 'use client';
 
+/**
+ * AdminVTORenderer
+ * ─────────────────
+ * Three.js Canvas overlay for the Admin Calibration Studio.
+ *
+ * Key design decisions:
+ *  - Uses useLoader(GLTFLoader, url, configurator) instead of useGLTF so we
+ *    can attach a KTX2Loader to the exact loader instance that processes the
+ *    GLB.  useGLTF's internal loader is a separate instance and has no hook
+ *    for KTX2 registration, which caused the "setKTX2Loader must be called
+ *    before loading KTX2 textures" crash for Meshy-AI GLBs.
+ *  - Basis transcoder is served from /basis/ (copied from three/examples/jsm/libs/basis).
+ */
+
 import React, { Suspense, MutableRefObject, useMemo, useRef } from 'react';
-import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { useGLTF } from '@react-three/drei';
-import { Euler, Group, Matrix4, Quaternion, Vector3 } from 'three';
+import { Canvas, useFrame, useThree, useLoader } from '@react-three/fiber';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
+import { Euler, Group, Matrix4, Quaternion, Vector3 } from 'three';
 import { FaceDetectionResult, LetterboxViewport } from '../tracking/FaceTrackingTypes';
 import { StudioTransform, StudioBridge } from '../AdminVTOCalibrationStudio';
 
@@ -32,19 +46,6 @@ function metricPose(data: number[] | Float32Array, mirrored = true) {
   };
 }
 
-/** Register KTX2Loader globally so GLBs with KTX2 textures don't crash */
-function KTX2Setup() {
-  const { gl } = useThree();
-  useMemo(() => {
-    const ktx2Loader = new KTX2Loader();
-    ktx2Loader.setTranscoderPath('/basis/');
-    ktx2Loader.detectSupport(gl);
-    useGLTF.setDecoderPath('/basis/');
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gl]);
-  return null;
-}
-
 function AdminModel({
   glbUrl,
   transform,
@@ -56,8 +57,18 @@ function AdminModel({
   bridge: StudioBridge;
   detectionRef: MutableRefObject<FaceDetectionResult | null>;
 }) {
-  const { scene } = useGLTF(glbUrl);
-  const sceneClone = useMemo(() => scene.clone(true), [scene]);
+  const { gl } = useThree();
+
+  // Use useLoader with a configurator so the KTX2Loader is registered on the
+  // exact GLTFLoader instance that processes this GLB.
+  const gltf = useLoader(GLTFLoader, glbUrl, (loader) => {
+    const ktx2 = new KTX2Loader();
+    ktx2.setTranscoderPath('/basis/');
+    ktx2.detectSupport(gl);
+    (loader as GLTFLoader).setKTX2Loader(ktx2);
+  });
+
+  const sceneClone = useMemo(() => gltf.scene.clone(true), [gltf.scene]);
   const root = useRef<Group>(null);
   const model = useRef<Group>(null);
 
@@ -130,9 +141,7 @@ export function AdminVTORenderer({
         camera={{ position: [0, 0, 0], fov: fovDegrees }}
         gl={{ alpha: true, antialias: true }}
         style={{ width: '100%', height: '100%', pointerEvents: 'none' }}
-        onError={(e) => console.error('[AdminVTORenderer] Canvas error:', e)}
       >
-        <KTX2Setup />
         <ambientLight intensity={1} />
         <directionalLight position={[3, 5, 4]} intensity={1.4} />
         <directionalLight position={[-3, 2, 3]} intensity={0.6} />
