@@ -18,6 +18,7 @@ import React, { Suspense, MutableRefObject, useMemo, useRef } from 'react';
 import { Canvas, useFrame, useThree, useLoader } from '@react-three/fiber';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
+import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { Euler, Group, Matrix4, Quaternion, Vector3 } from 'three';
 import { FaceDetectionResult, LetterboxViewport } from '../tracking/FaceTrackingTypes';
 import { StudioTransform, StudioBridge } from '../AdminVTOCalibrationStudio';
@@ -59,13 +60,16 @@ function AdminModel({
 }) {
   const { gl } = useThree();
 
-  // Use useLoader with a configurator so the KTX2Loader is registered on the
-  // exact GLTFLoader instance that processes this GLB.
+  // Use useLoader with a configurator so KTX2Loader + MeshoptDecoder are
+  // registered on the exact GLTFLoader instance that processes this GLB.
+  // Meshy-AI GLBs use BOTH KTX2 texture compression and Meshopt mesh
+  // compression — both decoders must be attached before the file is parsed.
   const gltf = useLoader(GLTFLoader, glbUrl, (loader) => {
     const ktx2 = new KTX2Loader();
     ktx2.setTranscoderPath('/basis/');
     ktx2.detectSupport(gl);
     (loader as GLTFLoader).setKTX2Loader(ktx2);
+    (loader as GLTFLoader).setMeshoptDecoder(MeshoptDecoder);
   });
 
   const sceneClone = useMemo(() => gltf.scene.clone(true), [gltf.scene]);
