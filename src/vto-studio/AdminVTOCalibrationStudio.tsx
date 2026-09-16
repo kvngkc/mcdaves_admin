@@ -172,7 +172,7 @@ export default function AdminVTOCalibrationStudio({
   return (
     <div className="rounded-2xl border border-neutral-800 bg-neutral-950 overflow-hidden flex flex-col lg:flex-row">
       {/* ── Left: Video + AR overlay ── */}
-      <div className="flex-1 min-w-0 border-b lg:border-b-0 lg:border-r border-neutral-800">
+      <div className="w-full lg:w-auto lg:flex-1 min-w-0 border-b lg:border-b-0 lg:border-r border-neutral-800">
         {/* Explicit height — never collapses regardless of parent grid/flex context */}
         <div className="relative" style={{ height: '380px' }}>
           {/* Camera feed */}
