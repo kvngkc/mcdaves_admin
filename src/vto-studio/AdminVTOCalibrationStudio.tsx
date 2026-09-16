@@ -1,11 +1,20 @@
 'use client';
 
+/**
+ * AdminVTOCalibrationStudio — Simplified Architecture
+ *
+ * Camera feed + 3D overlay both use simple absolute-fill layout (inset-0 w-full h-full).
+ * This avoids the letterbox math that was causing the video to be clipped before
+ * ResizeObserver fired with real container dimensions.
+ *
+ * The GLTFLoader is configured with KTX2 + Meshopt decoders to handle Meshy-AI GLBs.
+ */
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import { useCameraController } from './camera/CameraController';
 import { initFaceLandmarker, processFaceLandmarks } from './tracking/FaceLandmarker';
-import { FaceDetectionResult, LetterboxViewport } from './tracking/FaceTrackingTypes';
-import VTOVideo, { computeLetterboxViewport } from './components/VTOVideo';
+import { FaceDetectionResult } from './tracking/FaceTrackingTypes';
 
 const AdminVTORenderer = dynamic(() => import('./components/AdminVTORenderer'), {
   ssr: false,
@@ -38,190 +47,150 @@ export default function AdminVTOCalibrationStudio({
   transform,
   onChange,
 }: AdminVTOCalibrationStudioProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
-  const [containerSize, setContainerSize] = useState({ width: 640, height: 480 });
-  const [viewport, setViewport] = useState<LetterboxViewport>({
-    left: 0,
-    top: 0,
-    width: 640,
-    height: 480,
-    videoWidth: 640,
-    videoHeight: 480,
-    containerWidth: 640,
-    containerHeight: 480,
-  });
-
   const [detectorState, setDetectorState] = useState<'loading' | 'ready' | 'error'>('loading');
-  const [error, setError] = useState<string | null>(null);
+  const [detectorError, setDetectorError] = useState<string | null>(null);
 
-  // mutable tracking ref for zero-latency sync with the Canvas
   const latestDetectionRef = useRef<FaceDetectionResult | null>(null);
   const landmarkerRef = useRef<Awaited<ReturnType<typeof initFaceLandmarker>> | null>(null);
   const rafRef = useRef<number | null>(null);
   const runningRef = useRef(false);
 
-  // 1. Camera Lifecycle
+  // ── Camera ──────────────────────────────────────────────────────────────────
   const {
     stream,
-    videoWidth,
-    videoHeight,
     isStreaming,
     isLoading: cameraLoading,
     error: cameraError,
     attachVideo,
   } = useCameraController({ autoStart: true, idealWidth: 1280, idealHeight: 720 });
 
-  const cameraState = cameraLoading ? 'starting' : cameraError ? 'error' : isStreaming ? 'live' : 'starting';
+  const cameraState = cameraLoading
+    ? 'starting…'
+    : cameraError
+    ? 'error'
+    : isStreaming
+    ? 'live'
+    : 'starting…';
 
-  // 2. Container Resize Observer
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const observer = new ResizeObserver(([entry]) => {
-      const { width, height } = entry.contentRect;
-      if (width > 0 && height > 0) {
-        setContainerSize({ width, height });
-      }
-    });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
+  // Attach stream to the video element whenever either changes
+  const handleVideoRef = useCallback(
+    (el: HTMLVideoElement | null) => {
+      videoRef.current = el;
+      attachVideo(el);
+    },
+    [attachVideo],
+  );
 
-  // 3. Compute Viewport
-  useEffect(() => {
-    const vp = computeLetterboxViewport(
-      containerSize.width,
-      containerSize.height,
-      videoWidth || 640,
-      videoHeight || 480
-    );
-    setViewport(vp);
-  }, [containerSize, videoWidth, videoHeight]);
-
-  // 4. Initialize MediaPipe Detector
+  // ── MediaPipe Detector ───────────────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const landmarker = await initFaceLandmarker();
-        if (cancelled) {
-          landmarker.close?.();
-          return;
-        }
-        landmarkerRef.current = landmarker;
+        const lm = await initFaceLandmarker();
+        if (cancelled) { lm.close?.(); return; }
+        landmarkerRef.current = lm;
         setDetectorState('ready');
       } catch (err) {
         if (!cancelled) {
           setDetectorState('error');
-          setError(err instanceof Error ? err.message : 'MediaPipe failed to initialize');
+          setDetectorError(err instanceof Error ? err.message : 'MediaPipe init failed');
         }
       }
     })();
     return () => {
       cancelled = true;
-      if (landmarkerRef.current) {
-        landmarkerRef.current.close?.();
-        landmarkerRef.current = null;
-      }
+      landmarkerRef.current?.close?.();
+      landmarkerRef.current = null;
     };
   }, []);
 
-  // 5. Detection Loop
+  // ── Detection Loop ──────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!isStreaming || detectorState !== 'ready' || !landmarkerRef.current) return;
+    if (!isStreaming || detectorState !== 'ready') return;
     const video = videoRef.current;
     if (!video) return;
 
     runningRef.current = true;
-    const detectLoop = () => {
+    const loop = () => {
       if (!runningRef.current) return;
       if (
-        video &&
         !video.paused &&
         !video.ended &&
         video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
         video.videoWidth > 0 &&
-        video.videoHeight > 0 &&
         landmarkerRef.current
       ) {
         try {
           const nowMs = performance.now();
           const raw = landmarkerRef.current.detectForVideo(video, nowMs);
           if (raw) {
-            const processed = processFaceLandmarks(raw, video.videoWidth, video.videoHeight, nowMs);
-            latestDetectionRef.current = processed;
+            latestDetectionRef.current = processFaceLandmarks(
+              raw, video.videoWidth, video.videoHeight, nowMs,
+            );
           }
-        } catch {
-          // Keep loop resilient
-        }
+        } catch { /* resilient */ }
       }
-      if (runningRef.current) {
-        rafRef.current = requestAnimationFrame(detectLoop);
-      }
+      if (runningRef.current) rafRef.current = requestAnimationFrame(loop);
     };
-    rafRef.current = requestAnimationFrame(detectLoop);
+    rafRef.current = requestAnimationFrame(loop);
     return () => {
       runningRef.current = false;
-      if (rafRef.current) {
-        cancelAnimationFrame(rafRef.current);
-        rafRef.current = null;
-      }
+      if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
     };
   }, [isStreaming, detectorState]);
 
-  const handleVideoRef = useCallback(
-    (el: HTMLVideoElement | null) => {
-      videoRef.current = el;
-      attachVideo(el);
-    },
-    [attachVideo]
-  );
-
+  // ── Derived state ────────────────────────────────────────────────────────────
   const t = transform || DEFAULT_TRANSFORM;
-  const setVector = (group: 'position' | 'rotation', axis: 'x' | 'y' | 'z', value: number) =>
-    onChange({ ...transform, [group]: { ...transform[group], [axis]: value } });
+  const setVec = (g: 'position' | 'rotation', a: 'x' | 'y' | 'z', v: number) =>
+    onChange({ ...t, [g]: { ...t[g], [a]: v } });
 
-  const displayError = error || (cameraError ? cameraError.message : null);
+  const displayError = detectorError ?? (cameraError?.message ?? null);
 
   return (
     <div className="rounded-2xl border border-neutral-800 bg-neutral-950 overflow-hidden flex flex-col lg:flex-row">
-      {/* 4:3 Fitting Area (Flexible Viewport) - Left Side */}
-      <div className="flex-1 border-b lg:border-b-0 lg:border-r border-neutral-800">
-        <div ref={containerRef} className="relative aspect-[4/3] bg-black overflow-hidden flex items-center justify-center w-full h-full">
-          {/* Camera Feed */}
-          <VTOVideo
+      {/* ── Left: Video + AR overlay ── */}
+      <div className="flex-1 min-w-0 border-b lg:border-b-0 lg:border-r border-neutral-800">
+        {/* Fixed 4:3 aspect container */}
+        <div className="relative w-full" style={{ paddingBottom: '75%' /* = 3/4 = 4:3 ratio */ }}>
+          {/* Camera feed */}
+          <video
             ref={handleVideoRef}
-            stream={stream}
-            containerWidth={containerSize.width}
-            containerHeight={containerSize.height}
-            videoWidth={videoWidth}
-            videoHeight={videoHeight}
-            mirrored={true}
+            playsInline
+            muted
+            autoPlay
+            className="absolute inset-0 w-full h-full"
+            style={{
+              objectFit: 'cover',
+              transform: 'scaleX(-1)',
+              background: '#000',
+            }}
           />
 
-          {/* 3D AR Overlay */}
+          {/* 3D AR overlay — fills same box */}
           {glbUrl && (
-            <AdminVTORenderer
-              viewport={viewport}
-              glbUrl={glbUrl}
-              bridge={bridge}
-              transform={t}
-              detectionRef={latestDetectionRef}
-            />
+            <div className="absolute inset-0 pointer-events-none z-10">
+              <AdminVTORenderer
+                glbUrl={glbUrl}
+                bridge={bridge}
+                transform={t}
+                detectionRef={latestDetectionRef}
+              />
+            </div>
           )}
 
-          {/* UI Overlays */}
-          <div className="absolute left-3 top-3 flex gap-2 text-[10px] font-bold uppercase z-20">
-            <span className="rounded-full border border-neutral-700 bg-black/70 px-2 py-1">
+          {/* Status pills */}
+          <div className="absolute left-3 top-3 flex gap-2 text-[10px] font-bold uppercase z-20 pointer-events-none">
+            <span className="rounded-full border border-neutral-700 bg-black/70 px-2 py-1 text-white">
               Camera: {cameraState}
             </span>
-            <span className="rounded-full border border-neutral-700 bg-black/70 px-2 py-1">
+            <span className="rounded-full border border-neutral-700 bg-black/70 px-2 py-1 text-white">
               Face: {detectorState}
             </span>
           </div>
 
+          {/* Error banner */}
           {displayError && (
             <div className="absolute bottom-3 left-3 right-3 rounded-lg border border-red-900 bg-red-950/80 p-2 text-xs text-red-200 z-20">
               {displayError}
@@ -230,53 +199,57 @@ export default function AdminVTOCalibrationStudio({
         </div>
       </div>
 
-      {/* Manual Calibration Controls - Right Side */}
-      <div className="w-full lg:w-80 flex-shrink-0 bg-neutral-900/50 p-5 overflow-y-auto max-h-[600px] lg:max-h-none">
-        <h3 className="text-sm font-bold text-white mb-4">Manual Transform</h3>
-        <div className="space-y-4">
-          <div className="space-y-2">
-            {(['x', 'y', 'z'] as const).map((axis) => (
-              <div key={`p-${axis}`} className="flex items-center justify-between gap-3">
-                <label className="text-[10px] uppercase text-neutral-500 w-16">Pos {axis}</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={t.position[axis]}
-                  onChange={(e) => setVector('position', axis, Number(e.target.value))}
-                  className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1.5 text-xs text-white"
-                />
-              </div>
-            ))}
-          </div>
-          
-          <div className="space-y-2 pt-2 border-t border-neutral-800">
-            {(['x', 'y', 'z'] as const).map((axis) => (
-              <div key={`r-${axis}`} className="flex items-center justify-between gap-3">
-                <label className="text-[10px] uppercase text-neutral-500 w-16">Rot {axis}°</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  value={t.rotation[axis]}
-                  onChange={(e) => setVector('rotation', axis, Number(e.target.value))}
-                  className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1.5 text-xs text-white"
-                />
-              </div>
-            ))}
-          </div>
+      {/* ── Right: Config panel ── */}
+      <div className="w-full lg:w-72 flex-shrink-0 bg-neutral-900/60 p-5 space-y-5">
+        <h3 className="text-xs font-bold uppercase tracking-widest text-neutral-400">
+          Manual Transform
+        </h3>
 
-          <div className="space-y-2 pt-2 border-t border-neutral-800">
-            <div className="flex items-center justify-between gap-3">
-              <label className="text-[10px] uppercase text-neutral-500 w-16">Scale</label>
+        {/* Position */}
+        <div className="space-y-2">
+          <p className="text-[10px] uppercase text-neutral-500 font-semibold">Position</p>
+          {(['x', 'y', 'z'] as const).map((axis) => (
+            <div key={`p-${axis}`} className="flex items-center gap-3">
+              <span className="w-4 text-[10px] uppercase text-neutral-500 font-bold">{axis}</span>
               <input
                 type="number"
-                min="0.0001"
-                step="0.0001"
-                value={t.scale}
-                onChange={(e) => onChange({ ...t, scale: Number(e.target.value) })}
-                className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1.5 text-xs text-white"
+                step="0.01"
+                value={t.position[axis]}
+                onChange={(e) => setVec('position', axis, Number(e.target.value))}
+                className="flex-1 rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1.5 text-xs text-white"
               />
             </div>
-          </div>
+          ))}
+        </div>
+
+        {/* Rotation */}
+        <div className="space-y-2 pt-3 border-t border-neutral-800">
+          <p className="text-[10px] uppercase text-neutral-500 font-semibold">Rotation °</p>
+          {(['x', 'y', 'z'] as const).map((axis) => (
+            <div key={`r-${axis}`} className="flex items-center gap-3">
+              <span className="w-4 text-[10px] uppercase text-neutral-500 font-bold">{axis}</span>
+              <input
+                type="number"
+                step="0.5"
+                value={t.rotation[axis]}
+                onChange={(e) => setVec('rotation', axis, Number(e.target.value))}
+                className="flex-1 rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1.5 text-xs text-white"
+              />
+            </div>
+          ))}
+        </div>
+
+        {/* Scale */}
+        <div className="space-y-2 pt-3 border-t border-neutral-800">
+          <p className="text-[10px] uppercase text-neutral-500 font-semibold">Scale</p>
+          <input
+            type="number"
+            min="0.0001"
+            step="0.001"
+            value={t.scale}
+            onChange={(e) => onChange({ ...t, scale: Number(e.target.value) })}
+            className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1.5 text-xs text-white"
+          />
         </div>
       </div>
     </div>

@@ -1,17 +1,11 @@
 'use client';
 
 /**
- * AdminVTORenderer
- * ─────────────────
- * Three.js Canvas overlay for the Admin Calibration Studio.
+ * AdminVTORenderer — simplified to fill its parent div (inset-0 w-full h-full).
+ * The parent in AdminVTOCalibrationStudio is already positioned correctly,
+ * so no viewport math is needed here.
  *
- * Key design decisions:
- *  - Uses useLoader(GLTFLoader, url, configurator) instead of useGLTF so we
- *    can attach a KTX2Loader to the exact loader instance that processes the
- *    GLB.  useGLTF's internal loader is a separate instance and has no hook
- *    for KTX2 registration, which caused the "setKTX2Loader must be called
- *    before loading KTX2 textures" crash for Meshy-AI GLBs.
- *  - Basis transcoder is served from /basis/ (copied from three/examples/jsm/libs/basis).
+ * GLTFLoader is configured with KTX2Loader + MeshoptDecoder for Meshy-AI GLBs.
  */
 
 import React, { Suspense, MutableRefObject, useMemo, useRef } from 'react';
@@ -20,7 +14,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { Euler, Group, Matrix4, Quaternion, Vector3 } from 'three';
-import { FaceDetectionResult, LetterboxViewport } from '../tracking/FaceTrackingTypes';
+import { FaceDetectionResult } from '../tracking/FaceTrackingTypes';
 import { StudioTransform, StudioBridge } from '../AdminVTOCalibrationStudio';
 
 const CANONICAL_NOSE_BRIDGE = new Vector3(0, 1.921027, 3.436015);
@@ -38,7 +32,7 @@ function metricPose(data: number[] | Float32Array, mirrored = true) {
     euler.x - (12 * Math.PI) / 180,
     mirrored ? -euler.y : euler.y,
     mirrored ? -euler.z : euler.z,
-    'YXZ'
+    'YXZ',
   );
 
   return {
@@ -60,10 +54,8 @@ function AdminModel({
 }) {
   const { gl } = useThree();
 
-  // Use useLoader with a configurator so KTX2Loader + MeshoptDecoder are
-  // registered on the exact GLTFLoader instance that processes this GLB.
-  // Meshy-AI GLBs use BOTH KTX2 texture compression and Meshopt mesh
-  // compression — both decoders must be attached before the file is parsed.
+  // Configurator pattern — registers KTX2 + Meshopt on the exact loader
+  // instance that will parse this GLB file.
   const gltf = useLoader(GLTFLoader, glbUrl, (loader) => {
     const ktx2 = new KTX2Loader();
     ktx2.setTranscoderPath('/basis/');
@@ -79,7 +71,7 @@ function AdminModel({
   useFrame(() => {
     if (!root.current || !model.current) return;
     const detection = detectionRef.current;
-    if (!detection || !detection.faceMatrix) {
+    if (!detection?.faceMatrix) {
       root.current.visible = false;
       return;
     }
@@ -90,15 +82,15 @@ function AdminModel({
         (transform.rotation.x * Math.PI) / 180,
         (transform.rotation.y * Math.PI) / 180,
         (transform.rotation.z * Math.PI) / 180,
-        'YXZ'
-      )
+        'YXZ',
+      ),
     );
 
     root.current.visible = true;
     root.current.position.set(
       pose.position.x + transform.position.x,
       pose.position.y + transform.position.y,
-      pose.position.z + transform.position.z
+      pose.position.z + transform.position.z,
     );
     root.current.quaternion.copy(pose.quaternion).multiply(manualRotation);
     root.current.scale.setScalar(transform.scale);
@@ -115,7 +107,6 @@ function AdminModel({
 }
 
 export interface AdminVTORendererProps {
-  viewport: LetterboxViewport;
   glbUrl: string;
   bridge: StudioBridge;
   transform: StudioTransform;
@@ -124,7 +115,6 @@ export interface AdminVTORendererProps {
 }
 
 export function AdminVTORenderer({
-  viewport,
   glbUrl,
   bridge,
   transform,
@@ -132,36 +122,26 @@ export function AdminVTORenderer({
   fovDegrees = 63.0,
 }: AdminVTORendererProps) {
   return (
-    <div
-      className="absolute overflow-hidden pointer-events-none z-10"
-      style={{
-        left: viewport.left,
-        top: viewport.top,
-        width: viewport.width,
-        height: viewport.height,
-      }}
+    <Canvas
+      camera={{ position: [0, 0, 0], fov: fovDegrees }}
+      gl={{ alpha: true, antialias: true }}
+      style={{ width: '100%', height: '100%', pointerEvents: 'none' }}
     >
-      <Canvas
-        camera={{ position: [0, 0, 0], fov: fovDegrees }}
-        gl={{ alpha: true, antialias: true }}
-        style={{ width: '100%', height: '100%', pointerEvents: 'none' }}
-      >
-        <ambientLight intensity={1} />
-        <directionalLight position={[3, 5, 4]} intensity={1.4} />
-        <directionalLight position={[-3, 2, 3]} intensity={0.6} />
+      <ambientLight intensity={1} />
+      <directionalLight position={[3, 5, 4]} intensity={1.4} />
+      <directionalLight position={[-3, 2, 3]} intensity={0.6} />
 
-        {glbUrl && (
-          <Suspense fallback={null}>
-            <AdminModel
-              glbUrl={glbUrl}
-              bridge={bridge}
-              transform={transform}
-              detectionRef={detectionRef}
-            />
-          </Suspense>
-        )}
-      </Canvas>
-    </div>
+      {glbUrl && (
+        <Suspense fallback={null}>
+          <AdminModel
+            glbUrl={glbUrl}
+            bridge={bridge}
+            transform={transform}
+            detectionRef={detectionRef}
+          />
+        </Suspense>
+      )}
+    </Canvas>
   );
 }
 
