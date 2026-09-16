@@ -5,151 +5,32 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import { Euler, Group, Matrix4, Quaternion, Vector3 } from 'three';
 
-export type StudioTransform = {
-  position: { x:number; y:number; z:number };
-  rotation: { x:number; y:number; z:number };
-  scale: number;
-};
-
+export type StudioTransform = { position:{x:number;y:number;z:number}; rotation:{x:number;y:number;z:number}; scale:number };
 const DEFAULT_TRANSFORM: StudioTransform = { position:{x:0,y:0,z:0}, rotation:{x:0,y:0,z:0}, scale:1 };
 const MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task';
 const WASM_URL = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.17/wasm';
-const CANONICAL_NOSE_BRIDGE = new Vector3(0, 1.921027, 3.436015);
-
+const CANONICAL_NOSE_BRIDGE = new Vector3(0,1.921027,3.436015);
 type FaceInstance = { detectForVideo:(video:HTMLVideoElement,timestamp:number)=>any; close?:()=>void };
 
 function metricPose(data:number[]|Float32Array, mirrored=true) {
-  const matrix = new Matrix4().fromArray(data);
-  const rawPos = new Vector3();
-  const rawQuat = new Quaternion();
-  const rawScale = new Vector3();
-  matrix.decompose(rawPos, rawQuat, rawScale);
-  const bridge = CANONICAL_NOSE_BRIDGE.clone().applyMatrix4(matrix);
-  const euler = new Euler().setFromQuaternion(rawQuat, 'YXZ');
-  const tilt = -12 * Math.PI / 180;
-  const outEuler = new Euler(euler.x + tilt, mirrored ? -euler.y : euler.y, mirrored ? -euler.z : euler.z, 'YXZ');
-  return {
-    position: new Vector3(mirrored ? -bridge.x : bridge.x, bridge.y, bridge.z),
-    quaternion: new Quaternion().setFromEuler(outEuler),
-  };
+  const matrix=new Matrix4().fromArray(data); const rawPos=new Vector3(); const rawQuat=new Quaternion(); const rawScale=new Vector3(); matrix.decompose(rawPos,rawQuat,rawScale);
+  const bridge=CANONICAL_NOSE_BRIDGE.clone().applyMatrix4(matrix); const euler=new Euler().setFromQuaternion(rawQuat,'YXZ');
+  const outEuler=new Euler(euler.x-12*Math.PI/180,mirrored?-euler.y:euler.y,mirrored?-euler.z:euler.z,'YXZ');
+  return {position:new Vector3(mirrored?-bridge.x:bridge.x,bridge.y,bridge.z),quaternion:new Quaternion().setFromEuler(outEuler)};
 }
 
-function Model({ glbUrl, transform, faceRef }:{glbUrl:string;transform:StudioTransform;faceRef:React.MutableRefObject<number[]|null>}) {
-  const { scene } = useGLTF(glbUrl);
-  const sceneClone = useMemo(() => scene.clone(true), [scene]);
-  const root = useRef<Group>(null);
-  const model = useRef<Group>(null);
-
-  useEffect(() => {
-    if (!model.current) return;
-    model.current.position.set(0,0,0);
-  }, [sceneClone]);
-
-  useFrame(() => {
-    if (!root.current || !model.current) return;
-    const matrix = faceRef.current;
-    if (!matrix) { root.current.visible = false; return; }
-    const pose = metricPose(matrix, true);
-    root.current.visible = true;
-    root.current.position.set(
-      pose.position.x + transform.position.x,
-      pose.position.y + transform.position.y,
-      pose.position.z + transform.position.z,
-    );
-    root.current.quaternion.copy(pose.quaternion).multiply(
-      new Quaternion().setFromEuler(new Euler(
-        transform.rotation.x * Math.PI / 180,
-        transform.rotation.y * Math.PI / 180,
-        transform.rotation.z * Math.PI / 180,
-        'YXZ',
-      )),
-    );
-    root.current.scale.setScalar(transform.scale);
-    model.current.position.set(0,0,0);
-  });
-
-  return <group ref={root} visible={false}><group ref={model}><primitive object={sceneClone} /></group></group>;
+function Model({glbUrl,transform,faceRef}:{glbUrl:string;transform:StudioTransform;faceRef:React.MutableRefObject<number[]|null>}) {
+  const {scene}=useGLTF(glbUrl); const sceneClone=useMemo(()=>scene.clone(true),[scene]); const root=useRef<Group>(null);
+  useFrame(()=>{ if(!root.current)return; const matrix=faceRef.current; if(!matrix){root.current.visible=false;return;} const pose=metricPose(matrix,true); const manualRotation=new Quaternion().setFromEuler(new Euler(transform.rotation.x*Math.PI/180,transform.rotation.y*Math.PI/180,transform.rotation.z*Math.PI/180,'YXZ')); root.current.visible=true; root.current.position.set(pose.position.x+transform.position.x,pose.position.y+transform.position.y,pose.position.z+transform.position.z); root.current.quaternion.copy(pose.quaternion).multiply(manualRotation); root.current.scale.setScalar(transform.scale); });
+  return <group ref={root} visible={false}><primitive object={sceneClone}/></group>;
 }
 
-export default function AdminVTOCalibrationStudio({ glbUrl, transform, onChange }:{glbUrl:string;transform:StudioTransform;onChange:(next:StudioTransform)=>void}) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const faceRef = useRef<number[]|null>(null);
-  const landmarkerRef = useRef<FaceInstance|null>(null);
-  const rafRef = useRef<number|null>(null);
-  const streamRef = useRef<MediaStream|null>(null);
-  const [cameraState,setCameraState] = useState<'starting'|'live'|'error'>('starting');
-  const [detectorState,setDetectorState] = useState<'loading'|'ready'|'error'>('loading');
-  const [error,setError] = useState<string|null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'user', width:{ideal:1280}, height:{ideal:720} }, audio:false });
-        if (cancelled) { stream.getTracks().forEach(t=>t.stop()); return; }
-        streamRef.current = stream;
-        if (videoRef.current) { videoRef.current.srcObject = stream; await videoRef.current.play(); }
-        setCameraState('live');
-      } catch (e) { setCameraState('error'); setError(e instanceof Error ? e.message : 'Camera permission failed.'); }
-    })();
-    return () => { cancelled = true; streamRef.current?.getTracks().forEach(t=>t.stop()); if (rafRef.current) cancelAnimationFrame(rafRef.current); };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const { FaceLandmarker, FilesetResolver } = await import('@mediapipe/tasks-vision');
-        const vision = await FilesetResolver.forVisionTasks(WASM_URL);
-        const instance = await FaceLandmarker.createFromOptions(vision, {
-          baseOptions:{ modelAssetPath:MODEL_URL, delegate:'GPU' },
-          runningMode:'VIDEO', numFaces:1,
-          minFaceDetectionConfidence:.5, minFacePresenceConfidence:.5, minTrackingConfidence:.5,
-          outputFaceBlendshapes:false, outputFacialTransformationMatrixes:true,
-        });
-        if (cancelled) { instance.close(); return; }
-        landmarkerRef.current = instance as unknown as FaceInstance;
-        setDetectorState('ready');
-      } catch (e) { setDetectorState('error'); setError(e instanceof Error ? e.message : 'MediaPipe failed to initialize.'); }
-    })();
-    return () => { cancelled = true; landmarkerRef.current?.close?.(); landmarkerRef.current = null; };
-  }, []);
-
-  useEffect(() => {
-    if (cameraState !== 'live' || detectorState !== 'ready') return;
-    let running = true;
-    const loop = () => {
-      if (!running) return;
-      const video = videoRef.current;
-      const detector = landmarkerRef.current;
-      if (video && detector && video.readyState >= 2 && video.videoWidth > 0) {
-        try {
-          const result = detector.detectForVideo(video, performance.now());
-          const matrix = result.facialTransformationMatrixes?.[0]?.data;
-          faceRef.current = matrix ? Array.from(matrix) : null;
-        } catch {}
-      }
-      rafRef.current = requestAnimationFrame(loop);
-    };
-    rafRef.current = requestAnimationFrame(loop);
-    return () => { running = false; if (rafRef.current) cancelAnimationFrame(rafRef.current); };
-  }, [cameraState, detectorState]);
-
-  const setVector = (group:'position'|'rotation',axis:'x'|'y'|'z',value:number) => onChange({ ...transform, [group]:{ ...transform[group], [axis]:value } });
-  const setScale = (value:number) => onChange({ ...transform, scale:value });
-  const t = transform || DEFAULT_TRANSFORM;
-
-  return <div className="rounded-2xl border border-neutral-800 bg-neutral-950 overflow-hidden">
-    <div className="relative aspect-[4/3] bg-black">
-      <video ref={videoRef} muted playsInline className="absolute inset-0 h-full w-full object-cover -scale-x-100" />
-      {glbUrl && <div className="absolute inset-0"><Canvas camera={{position:[0,0,0],fov:63}} gl={{alpha:true,antialias:true}}><ambientLight intensity={1}/><directionalLight position={[3,5,4]} intensity={1.4}/><directionalLight position={[-3,2,3]} intensity={.6}/><Model glbUrl={glbUrl} transform={t} faceRef={faceRef}/></Canvas></div>}
-      <div className="absolute left-3 top-3 flex gap-2 text-[10px] font-bold uppercase"><span className="rounded-full border border-neutral-700 bg-black/70 px-2 py-1">Camera: {cameraState}</span><span className="rounded-full border border-neutral-700 bg-black/70 px-2 py-1">Face: {detectorState}</span></div>
-      {error && <div className="absolute bottom-3 left-3 right-3 rounded-lg border border-red-900 bg-red-950/80 p-2 text-xs text-red-200">{error}</div>}
-    </div>
-    <div className="grid gap-3 p-4 md:grid-cols-3">
-      {(['x','y','z'] as const).map(axis=><div key={`p-${axis}`}><label className="text-[10px] uppercase text-neutral-500">Position {axis}</label><input type="number" step="0.01" value={t.position[axis]} onChange={e=>setVector('position',axis,Number(e.target.value))} className="mt-1 w-full rounded-lg border border-neutral-800 bg-neutral-900 px-2 py-2 text-xs text-white" /></div>)}
-      {(['x','y','z'] as const).map(axis=><div key={`r-${axis}`}><label className="text-[10px] uppercase text-neutral-500">Rotation {axis}°</label><input type="number" step="0.1" value={t.rotation[axis]} onChange={e=>setVector('rotation',axis,Number(e.target.value))} className="mt-1 w-full rounded-lg border border-neutral-800 bg-neutral-900 px-2 py-2 text-xs text-white" /></div>)}
-      <div><label className="text-[10px] uppercase text-neutral-500">Overall scale</label><input type="number" min="0.0001" step="0.0001" value={t.scale} onChange={e=>setScale(Number(e.target.value))} className="mt-1 w-full rounded-lg border border-neutral-800 bg-neutral-900 px-2 py-2 text-xs text-white" /></div>
-    </div>
-  </div>;
+export default function AdminVTOCalibrationStudio({glbUrl,transform,onChange}:{glbUrl:string;transform:StudioTransform;onChange:(next:StudioTransform)=>void}) {
+  const videoRef=useRef<HTMLVideoElement>(null); const faceRef=useRef<number[]|null>(null); const landmarkerRef=useRef<FaceInstance|null>(null); const rafRef=useRef<number|null>(null); const streamRef=useRef<MediaStream|null>(null);
+  const [cameraState,setCameraState]=useState<'starting'|'live'|'error'>('starting'); const [detectorState,setDetectorState]=useState<'loading'|'ready'|'error'>('loading'); const [error,setError]=useState<string|null>(null);
+  useEffect(()=>{let cancelled=false;(async()=>{try{const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:1280},height:{ideal:720}},audio:false});if(cancelled){stream.getTracks().forEach(t=>t.stop());return;}streamRef.current=stream;if(videoRef.current){videoRef.current.srcObject=stream;await videoRef.current.play();}setCameraState('live');}catch(e){setCameraState('error');setError(e instanceof Error?e.message:'Camera permission failed.');}})();return()=>{cancelled=true;streamRef.current?.getTracks().forEach(t=>t.stop());if(rafRef.current)cancelAnimationFrame(rafRef.current);};},[]);
+  useEffect(()=>{let cancelled=false;(async()=>{try{const {FaceLandmarker,FilesetResolver}=await import('@mediapipe/tasks-vision');const vision=await FilesetResolver.forVisionTasks(WASM_URL);let instance:any;try{instance=await FaceLandmarker.createFromOptions(vision,{baseOptions:{modelAssetPath:MODEL_URL,delegate:'GPU'},runningMode:'VIDEO',numFaces:1,minFaceDetectionConfidence:.5,minFacePresenceConfidence:.5,minTrackingConfidence:.5,outputFaceBlendshapes:false,outputFacialTransformationMatrixes:true});}catch{instance=await FaceLandmarker.createFromOptions(vision,{baseOptions:{modelAssetPath:MODEL_URL,delegate:'CPU'},runningMode:'VIDEO',numFaces:1,minFaceDetectionConfidence:.5,minFacePresenceConfidence:.5,minTrackingConfidence:.5,outputFaceBlendshapes:false,outputFacialTransformationMatrixes:true});}if(cancelled){instance.close();return;}landmarkerRef.current=instance as FaceInstance;setDetectorState('ready');}catch(e){setDetectorState('error');setError(e instanceof Error?e.message:'MediaPipe failed to initialize.');}})();return()=>{cancelled=true;landmarkerRef.current?.close?.();landmarkerRef.current=null;};},[]);
+  useEffect(()=>{if(cameraState!=='live'||detectorState!=='ready')return;let running=true;const loop=()=>{if(!running)return;const video=videoRef.current;const detector=landmarkerRef.current;if(video&&detector&&video.readyState>=2&&video.videoWidth>0){try{const result=detector.detectForVideo(video,performance.now());const matrix=result.facialTransformationMatrixes?.[0]?.data;faceRef.current=matrix?Array.from(matrix):null;}catch{}}rafRef.current=requestAnimationFrame(loop);};rafRef.current=requestAnimationFrame(loop);return()=>{running=false;if(rafRef.current)cancelAnimationFrame(rafRef.current);};},[cameraState,detectorState]);
+  const setVector=(group:'position'|'rotation',axis:'x'|'y'|'z',value:number)=>onChange({...transform,[group]:{...transform[group],[axis]:value}}); const t=transform||DEFAULT_TRANSFORM;
+  return <div className="rounded-2xl border border-neutral-800 bg-neutral-950 overflow-hidden"><div className="relative aspect-[4/3] bg-black"><video ref={videoRef} muted playsInline className="absolute inset-0 h-full w-full object-cover -scale-x-100"/>{glbUrl&&<div className="absolute inset-0"><Canvas camera={{position:[0,0,0],fov:63}} gl={{alpha:true,antialias:true}}><ambientLight intensity={1}/><directionalLight position={[3,5,4]} intensity={1.4}/><directionalLight position={[-3,2,3]} intensity={.6}/><Model glbUrl={glbUrl} transform={t} faceRef={faceRef}/></Canvas></div>}<div className="absolute left-3 top-3 flex gap-2 text-[10px] font-bold uppercase"><span className="rounded-full border border-neutral-700 bg-black/70 px-2 py-1">Camera: {cameraState}</span><span className="rounded-full border border-neutral-700 bg-black/70 px-2 py-1">Face: {detectorState}</span></div>{error&&<div className="absolute bottom-3 left-3 right-3 rounded-lg border border-red-900 bg-red-950/80 p-2 text-xs text-red-200">{error}</div>}</div><div className="grid gap-3 p-4 md:grid-cols-3">{(['x','y','z'] as const).map(axis=><div key={`p-${axis}`}><label className="text-[10px] uppercase text-neutral-500">Position {axis}</label><input type="number" step="0.01" value={t.position[axis]} onChange={e=>setVector('position',axis,Number(e.target.value))} className="mt-1 w-full rounded-lg border border-neutral-800 bg-neutral-900 px-2 py-2 text-xs text-white"/></div>)}{(['x','y','z'] as const).map(axis=><div key={`r-${axis}`}><label className="text-[10px] uppercase text-neutral-500">Rotation {axis}°</label><input type="number" step="0.1" value={t.rotation[axis]} onChange={e=>setVector('rotation',axis,Number(e.target.value))} className="mt-1 w-full rounded-lg border border-neutral-800 bg-neutral-900 px-2 py-2 text-xs text-white"/></div>)}<div><label className="text-[10px] uppercase text-neutral-500">Overall scale</label><input type="number" min="0.0001" step="0.0001" value={t.scale} onChange={e=>onChange({...t,scale:Number(e.target.value)})} className="mt-1 w-full rounded-lg border border-neutral-800 bg-neutral-900 px-2 py-2 text-xs text-white"/></div></div></div>;
 }
