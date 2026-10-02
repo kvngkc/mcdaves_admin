@@ -25,6 +25,21 @@
     "paths": {
       "@/*": [
         "./src/*"
+      ],
+      "@/lib/commerce/types": [
+        "./node_modules/@mcdaves/shared/src/commerce/types.ts"
+      ],
+      "@/lib/security/rate-limit": [
+        "./node_modules/@mcdaves/shared/src/security/rate-limit.ts"
+      ],
+      "@/lib/security/turnstile": [
+        "./node_modules/@mcdaves/shared/src/security/turnstile.ts"
+      ],
+      "@/lib/auth/admin-auth": [
+        "./node_modules/@mcdaves/shared/src/auth/admin-auth.ts"
+      ],
+      "@/lib/supabase/service": [
+        "./node_modules/@mcdaves/shared/src/supabase/service.ts"
       ]
     }
   },
