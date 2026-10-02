@@ -28,11 +28,21 @@ for review.
 - Rollback path:
 - Contract/schema change? <!-- yes / no -->
 
-## Regression gate
+## Manual CI verification gate (TEMPORARY required regression gate)
 
-- [ ] `Required Regression Gate` is green on the head commit (or
-      `Required Cross-Repo Gate` for a cross-repo/contract PR)
+<!-- MANDATORY. Server-side branch protection is unavailable on this plan, so
+     this gate is a reviewer/CI convention. See docs/MERGE_GATE.md. -->
+
+- [ ] I ran `./scripts/verify-merge-gate.sh <this-PR-number>` against the
+      **current HEAD commit** and it exited **0** (gate PASSED)
+- [ ] The required check `Required Regression Gate` is **green on the exact HEAD
+      commit** being merged (not an earlier commit)
 - [ ] No test was skipped, weakened, or marked `continue-on-error` to pass
+- [ ] The result was recorded in `docs/gate-verification-log.md`
+
+> **HALT conditions:** no workflow run for the HEAD SHA · any run not
+> `completed`/`success` · required check missing or not `success` · new commits
+> after the green run · baseline red on `main`. If any apply, **do not merge**.
 
 ## Checklist
 
