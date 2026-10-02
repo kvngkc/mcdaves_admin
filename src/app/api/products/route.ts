@@ -344,21 +344,21 @@ export async function PATCH(req: NextRequest): Promise<NextResponse> {
       .single();
     if (error) throw error;
     if (Array.isArray(media)) {
-      await supabase.from('product_media').delete().eq('product_id', id);
-      if (media.length > 0)
-        await supabase
-          .from('product_media')
-          .insert(
-            media.map((m: any, idx: number) => ({
-              id: `med-${id}-${idx}-${Date.now().toString().slice(-3)}`,
-              product_id: id,
-              type: (m.mediaType || 'front').replace('image_', ''),
-              url: m.url,
-              alt_text: m.altText || data.name,
-              is_primary: m.isPrimary ?? idx === 0,
-              sort_order: m.sortOrder ?? idx,
-            })),
-          );
+      // Step 5.3: delete + re-insert run in ONE transaction (RPC), so a mid-way
+      // failure can no longer lose the product's media.
+      const mediaRows = media.map((m: any, idx: number) => ({
+        id: `med-${id}-${idx}-${Date.now().toString().slice(-3)}`,
+        type: (m.mediaType || 'front').replace('image_', ''),
+        url: m.url,
+        alt_text: m.altText || data.name,
+        is_primary: m.isPrimary ?? idx === 0,
+        sort_order: m.sortOrder ?? idx,
+      }));
+      const { error: mediaErr } = await supabase.rpc('replace_product_media', {
+        p_product_id: id,
+        p_media: mediaRows,
+      });
+      if (mediaErr) throw mediaErr;
     }
     return NextResponse.json({ success: true, product: mapRowToProduct(data) }, { status: 200 });
   } catch (err: unknown) {
@@ -383,9 +383,9 @@ export async function DELETE(req: NextRequest): Promise<NextResponse> {
       if (error) throw error;
       return NextResponse.json({ success: true, message: 'Variant deleted' }, { status: 200 });
     }
-    await supabase.from('product_media').delete().eq('product_id', id);
-    await supabase.from('product_variants').delete().eq('product_id', id);
-    const { error } = await supabase.from('products').delete().eq('id', id);
+    // Step 5.3: media -> variants -> product run in ONE transaction (RPC), so a
+    // mid-way failure can no longer orphan rows.
+    const { error } = await supabase.rpc('delete_product_cascade', { p_product_id: id });
     if (error) throw error;
     return NextResponse.json({ success: true, message: 'Product deleted' }, { status: 200 });
   } catch (err: unknown) {
