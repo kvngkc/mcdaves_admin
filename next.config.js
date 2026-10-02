@@ -30,8 +30,8 @@ const nextConfig = {
           { key: 'X-Content-Type-Options', value: 'nosniff' },
           { key: 'X-Frame-Options', value: 'DENY' },
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
-          // Step 3.9 (expand): observe violations before enforcing.
-          { key: 'Content-Security-Policy-Report-Only', value: CSP },
+          // Step 3.9 (contract): enforce after the report-only window.
+          { key: 'Content-Security-Policy', value: CSP },
         ],
       },
     ];
