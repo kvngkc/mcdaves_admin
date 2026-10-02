@@ -1,6 +1,7 @@
 // src/lib/auth/admin-auth.ts
 import crypto from 'crypto';
 import { NextRequest } from 'next/server';
+import type { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase/service';
 import { resolveUserRole, type AdminRole } from '@/lib/auth/role-read';
 
@@ -53,7 +54,8 @@ export interface AuthResult {
   authorized: boolean;
   role?: AdminRole;
   error?: string;
-  user?: any;
+  /** The authenticated Supabase user, present only when `authorized` is true. */
+  user?: User;
 }
 
 export async function requireRole(
