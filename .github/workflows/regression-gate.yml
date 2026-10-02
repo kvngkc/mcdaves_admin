@@ -1,0 +1,111 @@
+name: Regression Gate
+
+# Phase 0.1 — consolidated regression/CI gate (v4 plan, step 0.1).
+# Produces ONE stable required status check: "Required Regression Gate".
+# Runs the full admin-console suite: type-check, lint, build and Vitest.
+# This is the check to mark Required on `main`.
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+concurrency:
+  group: regression-gate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  type-check:
+    name: Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - name: Install Dependencies
+        run: npm ci
+      - name: Type Check
+        run: npm run type-check
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - name: Install Dependencies
+        run: npm ci
+      - name: Lint
+        run: npm run lint
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - name: Install Dependencies
+        run: npm ci
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+
+  vitest:
+    name: Vitest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - name: Install Dependencies
+        run: npm ci
+      - name: Run Vitest Tests
+        run: npm run test
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
+  # Single aggregator job — this is the ONE stable check name to mark Required.
+  gate:
+    name: Required Regression Gate
+    runs-on: ubuntu-latest
+    needs: [ type-check, lint, build, vitest ]
+    if: always()
+    steps:
+      - name: Assert every required job succeeded
+        run: |
+          echo "type-check = ${{ needs.type-check.result }}"
+          echo "lint       = ${{ needs.lint.result }}"
+          echo "build      = ${{ needs.build.result }}"
+          echo "vitest     = ${{ needs.vitest.result }}"
+          if [ "${{ needs.type-check.result }}" != "success" ] || \
+             [ "${{ needs.lint.result }}" != "success" ] || \
+             [ "${{ needs.build.result }}" != "success" ] || \
+             [ "${{ needs.vitest.result }}" != "success" ]; then
+            echo "::error::Regression gate FAILED — one or more required jobs did not succeed."
+            exit 1
+          fi
+          echo "Regression gate PASSED — all required jobs succeeded."
