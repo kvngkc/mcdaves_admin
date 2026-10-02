@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdminSession } from '@/lib/auth/admin-auth';
+import { recordAdminAudit } from '@/lib/auth/audit-log';
 import { supabase } from '@/lib/supabase/service';
 import crypto from 'crypto';
 
@@ -63,6 +64,16 @@ export async function POST(req: NextRequest) {
     });
 
     if (error) throw error;
+
+    // Step 3.4: record the mutation with the acting user.
+    await recordAdminAudit({
+      actorId: auth.user?.id,
+      actorEmail: auth.user?.email,
+      action: 'user.create',
+      targetType: 'user',
+      targetId: data.user?.id,
+      metadata: { role, email },
+    });
 
     return NextResponse.json({ 
       user: data.user, 

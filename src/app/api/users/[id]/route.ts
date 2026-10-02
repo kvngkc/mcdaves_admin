@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdminSession } from '@/lib/auth/admin-auth';
+import { recordAdminAudit } from '@/lib/auth/audit-log';
 import { supabase } from '@/lib/supabase/service';
 
 export const dynamic = 'force-dynamic';
@@ -28,6 +29,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     if (error) throw error;
 
+    // Step 3.4: record the mutation with the acting user.
+    await recordAdminAudit({
+      actorId: auth.user?.id,
+      actorEmail: auth.user?.email,
+      action: 'user.role_update',
+      targetType: 'user',
+      targetId: resolvedParams.id,
+      metadata: { role },
+    });
+
     return NextResponse.json({ user: data.user });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
@@ -50,6 +61,15 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     const { error } = await supabase.auth.admin.deleteUser(resolvedParams.id);
 
     if (error) throw error;
+
+    // Step 3.4: record the mutation with the acting user.
+    await recordAdminAudit({
+      actorId: auth.user?.id,
+      actorEmail: auth.user?.email,
+      action: 'user.delete',
+      targetType: 'user',
+      targetId: resolvedParams.id,
+    });
 
     return NextResponse.json({ success: true });
   } catch (err: any) {
