@@ -30,9 +30,16 @@ for review.
 
 ## Regression gate
 
-- [ ] `Required Regression Gate` is green on the head commit (or
-      `Required Cross-Repo Gate` for a cross-repo/contract PR)
+<!-- PLATFORM-ENFORCED: branch protection on `main` requires the checks below.
+     A red or MISSING required check blocks the merge button — the gate is no
+     longer enforced by convention alone. See docs/MERGE_GATE.md. -->
+
+- Required check(s) on `main`: `Required Regression Gate` (this repo);
+  `Required Cross-Repo Gate` additionally in `mcdaves_website`
+- [ ] The required check is green on the head commit
+- [ ] Branch is up to date with `main` (`strict` is on)
 - [ ] No test was skipped, weakened, or marked `continue-on-error` to pass
+- [ ] No required check was removed from branch protection to pass
 
 ## Checklist
 
