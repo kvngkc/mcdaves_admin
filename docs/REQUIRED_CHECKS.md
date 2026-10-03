@@ -1,6 +1,6 @@
 # Required-Check Policy — Regression Gate (Phase 0.1)
 
-> Status: **adopted by convention** (see *Limitation* below).
+> Status: **platform-enforced** (see *Enforcement* below).
 > Applies to: `kvngkc/mcdaves_website` and `kvngkc/mcdaves_admin`, default branch `main`.
 
 ## 1. The gate
@@ -23,11 +23,7 @@ Two workflow files implement it:
 The aggregator job exists so the required check has **one stable name** that does
 not change when individual jobs are added, renamed or split.
 
-## 2. Required-check policy (enforced by convention)
-
-Because branch protection / required status checks are **not available** on this
-plan (see §3), the gate is enforced by the following team convention. It is
-binding on every PR, including the Phase 1–7 remediation PRs.
+## 2. Required-check policy
 
 1. **No PR merges to `main` in either repo unless `Required Regression Gate` is
    green** on the PR head commit. For cross-repo / contract PRs, the
@@ -44,48 +40,36 @@ binding on every PR, including the Phase 1–7 remediation PRs.
 6. **Reviewers verify the check.** The approving reviewer confirms the gate is
    green on the head commit before approving.
 
-### One-time setup for the cross-repo gate
+This policy is now **enforced by the platform**, not by convention alone — see §3.
 
-`cross-repo-gate.yml` (in `mcdaves_website`) checks out the *other* private repo,
-which the default `GITHUB_TOKEN` cannot read. A repo admin must create a
-fine-grained PAT with read access to both private repos and store it as the
-secret **`CROSS_REPO_TOKEN`** in `mcdaves_website`. Until that secret exists the
-admin-suite job fails closed (the gate does not silently pass).
+## 3. Enforcement — branch protection is now LIVE
 
-## 3. Limitation — branch protection unavailable
+Both repositories were made **public**, so branch protection and required status
+checks are available on the Free plan. As recorded in `docs/MERGE_GATE.md`,
+branch protection is **enabled and API-verified** on `main` in both repositories:
 
-The access check found that **branch protection and required status checks are
-unavailable on GitHub Free private repositories**. Both `mcdaves_website` and
-`mcdaves_admin` are private repos on a Free plan, so:
+- `mcdaves_website` — required checks: `Required Regression Gate` **and**
+  `Required Cross-Repo Gate`; `strict` on; force-push blocked; deletion blocked;
+  enforced for administrators; pull request required.
+- `mcdaves_admin` — required check: `Required Regression Gate`; `strict` on;
+  force-push blocked; deletion blocked; enforced for administrators; pull
+  request required.
 
-- `GET /repos/{owner}/{repo}/branches/main/protection` returns **403** for both
-  default branches.
-- The gate therefore **cannot be marked Required in branch protection** at this
-  time, and GitHub will not mechanically block a merge on a red check.
+`GET /repos/kvngkc/mcdaves_{website,admin}/branches/main` now returns
+`"protected": true` with `enforcement_level: "everyone"` (it previously returned
+**403**). §2 is therefore **platform-enforced**.
 
-**Consequence:** the gate is enforced by the documented convention in §2 rather
-than by the platform. This is a real, acknowledged gap — a determined actor can
-still merge around a red check.
-
-**Remediation path (when available):** upgrade the account to GitHub Pro/Team
-(or make the repos public), then mark the check Required on both default
-branches:
-
-```
-Settings → Branches → Add branch protection rule → branch: main
-  ☑ Require status checks to pass before merging
-      → add required check: "Required Regression Gate"
-  ☑ Require branches to be up to date before merging
-```
-
-Repeat in both repositories. Once branch protection is available, §2 becomes
-platform-enforced and this section is updated to record the change.
+**Remaining baseline blocker (fail-closed):** the required gate is **RED** on
+both current `main` tips — website `2fa0b6d4…` and admin `8d48bd59…`. With
+`strict` on, **no PR can land until the baseline failures are fixed on `main`**.
+See `docs/MERGE_GATE.md` §4 for the failing legs.
 
 ## 4. Verification
 
 - A PR that deliberately breaks one test in either repo shows the gate **red**
-  and is not merged (convention §2).
+  and is mechanically blocked from merging into `main` (branch protection).
 - The gate's aggregator job name is stable: `Required Regression Gate`
   (per-repo) and `Required Cross-Repo Gate` (cross-repo).
-- This document records the branch-protection limitation and the exact
-  remediation steps.
+- `GET /repos/kvngkc/mcdaves_website/branches/main` and
+  `GET /repos/kvngkc/mcdaves_admin/branches/main` both report
+  `"protected": true`.

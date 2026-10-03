@@ -1,0 +1,10 @@
+# Build output and generated assets — never format these.
+.next/
+node_modules/
+out/
+build/
+coverage/
+public/
+package-lock.json
+*.min.js
+*.min.css
