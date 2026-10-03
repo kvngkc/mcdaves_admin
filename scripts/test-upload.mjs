@@ -1,3 +1,7 @@
+// ⚠️  DEV SCRIPT — WRITES TO THE `vto-models` STORAGE BUCKET.
+// Uploads and then removes a test object using the service-role key. Moved out
+// of the repository root (step 5.5) so it cannot be run by accident.
+// Run explicitly: `node scripts/test-upload.mjs`.
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
