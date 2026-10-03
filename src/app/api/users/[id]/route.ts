@@ -23,7 +23,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
 
     const { data, error } = await supabase.auth.admin.updateUserById(resolvedParams.id, {
-      user_metadata: { role }
+      // Step 2.2: write the authoritative role to app_metadata.role.
+      app_metadata: { role },
     });
 
     if (error) throw error;

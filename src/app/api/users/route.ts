@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const { data: users, error } = await supabase.auth.admin.listUsers();
-    
+
     if (error) throw error;
 
     // Filter out potential non-admin users if necessary, or just return them all
@@ -57,15 +57,15 @@ export async function POST(req: NextRequest) {
       email,
       password: tempPassword,
       email_confirm: true,
-      user_metadata: {
-        role: role
-      }
+      // Step 2.2: the authoritative role lives in app_metadata.role — never
+      // user_metadata, which any signed-in user can overwrite.
+      app_metadata: { role },
     });
 
     if (error) throw error;
 
-    return NextResponse.json({ 
-      user: data.user, 
+    return NextResponse.json({
+      user: data.user,
       tempPassword,
       message: 'User created successfully. Provide the temporary password securely to the user.'
     });
