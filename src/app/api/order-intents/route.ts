@@ -2,8 +2,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase/service';
 import { requireStaffOrHigher } from '@/lib/auth/admin-auth';
+import { buildOrIlikeFilter } from '@/lib/security/postgrest';
 
 export const dynamic = 'force-dynamic';
+
+// Step 2.4: searchable columns are a fixed allow-list — never derived from input.
+const INTENT_SEARCH_COLUMNS = ['customer_name', 'customer_phone', 'product_name'] as const;
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
   try {
@@ -26,8 +30,10 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       query = query.eq('status', status);
     }
 
-    if (search) {
-      query = query.or(`customer_name.ilike.%${search}%,customer_phone.ilike.%${search}%,product_name.ilike.%${search}%`);
+    // Step 2.4: sanitised value + fixed column set (no filter injection).
+    const orFilter = buildOrIlikeFilter(INTENT_SEARCH_COLUMNS, search);
+    if (orFilter) {
+      query = query.or(orFilter);
     }
 
     const { data, error } = await query;
