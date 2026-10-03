@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase/service';
 import { requireStaffOrHigher } from '@/lib/auth/admin-auth';
+import { ORDER_INTENT_STATUSES, OrderIntentStatusSchema } from '@/lib/commerce/order-status';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,8 +38,17 @@ export async function PATCH(
       updated_at: new Date().toISOString(),
     };
 
-    if (status) {
-      updates.status = status;
+    // Step 3.3: validate against the canonical vocabulary — an unknown value is
+    // rejected by both apps instead of being written straight through.
+    if (status !== undefined) {
+      const parsedStatus = OrderIntentStatusSchema.safeParse(status);
+      if (!parsedStatus.success) {
+        return NextResponse.json(
+          { error: 'Unknown status value', allowed: ORDER_INTENT_STATUSES },
+          { status: 400 },
+        );
+      }
+      updates.status = parsedStatus.data;
     }
 
     if (generatePaymentLink) {
