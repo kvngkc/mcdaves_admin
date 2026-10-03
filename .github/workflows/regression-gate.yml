@@ -2,7 +2,7 @@ name: Regression Gate
 
 # Phase 0.1 — consolidated regression/CI gate (v4 plan, step 0.1).
 # Produces ONE stable required status check: "Required Regression Gate".
-# Runs the full admin-console suite: type-check, lint, build and Vitest.
+# Runs the full admin-console suite: type-check, lint, build, format and Vitest.
 # This is the check to mark Required on `main`.
 
 on:
@@ -49,6 +49,26 @@ jobs:
       - name: Lint
         run: npm run lint
 
+  # Step 5.2 — formatting enforcement. Kept separate from the reformat (5.1) so
+  # the formatting diff stays clean and this check can be tuned without
+  # reopening it. Scoped to the paths already formatted; the scope widens as the
+  # rest of the tree is adopted.
+  format-check:
+    name: Format Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - name: Install Dependencies
+        run: npm ci
+      - name: Prettier check
+        run: npx --yes prettier@3.3.3 --check "src/lib/auth/**/*.ts" "src/app/api/products/**/*.ts"
+
   build:
     name: Build
     runs-on: ubuntu-latest
@@ -93,19 +113,21 @@ jobs:
   gate:
     name: Required Regression Gate
     runs-on: ubuntu-latest
-    needs: [ type-check, lint, build, vitest ]
+    needs: [ type-check, lint, format-check, build, vitest ]
     if: always()
     steps:
       - name: Assert every required job succeeded
         run: |
-          echo "type-check = ${{ needs.type-check.result }}"
-          echo "lint       = ${{ needs.lint.result }}"
-          echo "build      = ${{ needs.build.result }}"
-          echo "vitest     = ${{ needs.vitest.result }}"
+          echo "type-check   = ${{ needs.type-check.result }}"
+          echo "lint         = ${{ needs.lint.result }}"
+          echo "format-check = ${{ needs.format-check.result }}"
+          echo "build        = ${{ needs.build.result }}"
+          echo "vitest       = ${{ needs.vitest.result }}"
           if [ "${{ needs.type-check.result }}" != "success" ] || \
-             [ "${{ needs.lint.result }}" != "success" ] || \
-             [ "${{ needs.build.result }}" != "success" ] || \
-             [ "${{ needs.vitest.result }}" != "success" ]; then
+            [ "${{ needs.lint.result }}" != "success" ] || \
+            [ "${{ needs.format-check.result }}" != "success" ] || \
+            [ "${{ needs.build.result }}" != "success" ] || \
+            [ "${{ needs.vitest.result }}" != "success" ]; then
             echo "::error::Regression gate FAILED — one or more required jobs did not succeed."
             exit 1
           fi
