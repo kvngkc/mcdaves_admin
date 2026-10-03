@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase/service';
 import { requireStaffOrHigher } from '@/lib/auth/admin-auth';
+import { isOrderIntentStatus } from '@/lib/commerce/order-intent-status';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,6 +23,14 @@ export async function PATCH(
     const { id } = await params;
     const body = await req.json();
     const { status, generatePaymentLink } = body;
+
+    // Step 2.6: reject any status that is not in the canonical set.
+    if (status !== undefined && !isOrderIntentStatus(status)) {
+      return NextResponse.json(
+        { error: 'Invalid status value.' },
+        { status: 400 },
+      );
+    }
 
     const { data: intent, error: fetchErr } = await supabase
       .from('order_intents')
@@ -81,7 +90,12 @@ export async function PATCH(
       }
 
       updates.payment_link_url = paystackData.data.authorization_url;
-      updates.status = 'PAYMENT_PENDING';
+      // Step 2.6: do not invent 'PAYMENT_PENDING' — it is not a canonical
+      // status. A freshly generated link leaves the intent at its canonical
+      // starting status.
+      if (!updates.status) {
+        updates.status = 'NEW';
+      }
     }
 
     const { data: updated, error: updateErr } = await supabase
