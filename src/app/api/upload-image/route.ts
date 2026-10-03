@@ -2,11 +2,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase/service';
 import { requireManagerOrHigher } from '@/lib/auth/admin-auth';
+import { isAllowedImageMime, extensionForMime, isValidImageMagicBytes } from '@/lib/security/image-upload';
 
+// Step 2.5: sharp needs the Node runtime, not Edge.
+export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
-const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/avif'];
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
@@ -27,7 +29,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'No image file provided' }, { status: 400 });
     }
 
-    if (!ALLOWED_MIME_TYPES.includes(file.type)) {
+    if (!isAllowedImageMime(file.type)) {
       return NextResponse.json(
         { error: 'Invalid image format. Supported formats: WEBP, PNG, JPG, JPEG.' },
         { status: 400 },
@@ -41,21 +43,38 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     }
 
-    const ext = file.name.split('.').pop() || 'webp';
-    const baseClean = file.name
+    // Step 2.5: the stored extension comes from the validated MIME type, never
+    // from the caller-supplied filename.
+    const ext = extensionForMime(file.type);
+    if (!ext) {
+      return NextResponse.json({ error: 'Unsupported image type.' }, { status: 400 });
+    }
+
+    const baseClean = (file.name || 'upload')
       .replace(/\.[^/.]+$/, '')
       .toLowerCase()
-      .replace(/[^a-z0-9_-]/g, '_');
+      .replace(/[^a-z0-9_-]/g, '_')
+      .slice(0, 60) || 'upload';
+
+    const buffer = Buffer.from(await file.arrayBuffer());
+
+    // Step 2.5: reject spoofed content types — the bytes must really be an image.
+    if (!(await isValidImageMagicBytes(buffer))) {
+      return NextResponse.json(
+        { error: 'File content is not a valid image.' },
+        { status: 400 },
+      );
+    }
 
     const sanitizedFilename = `products/${imageType}_${baseClean}_${Date.now().toString().slice(-4)}.${ext}`;
-    const buffer = Buffer.from(await file.arrayBuffer());
 
     // Upload to Supabase Storage bucket 'product-media'
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from('product-media')
       .upload(sanitizedFilename, buffer, {
         contentType: file.type,
-        upsert: true,
+        // Step 2.5: never overwrite an existing object.
+        upsert: false,
       });
 
     if (uploadError || !uploadData) {
