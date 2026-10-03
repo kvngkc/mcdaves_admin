@@ -1,8 +1,10 @@
+// src/app/api/auth/login/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase/service';
 import { ADMIN_COOKIE_NAME, ADMIN_CSRF_COOKIE, generateCsrfToken } from '@/lib/auth/admin-auth';
 import { verifyTurnstileToken } from '@/lib/security/turnstile';
+import { resolveLoginAnonKey } from '@/lib/supabase/resolve-key';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,9 +16,22 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     if (!await verifyTurnstileToken(turnstileToken)) return NextResponse.json({ success: false, error: 'Security check failed. Please refresh.' }, { status: 400 });
     if (!supabase || !process.env.NEXT_PUBLIC_SUPABASE_URL) return NextResponse.json({ success: false, error: 'Database client missing.' }, { status: 500 });
 
+    // Step 2.3: the login client uses the ANON key only. It must never fall back
+    // to the service-role key — that would authenticate the public login
+    // endpoint with full admin privileges.
+    let anonKey: string;
+    try {
+      anonKey = resolveLoginAnonKey();
+    } catch {
+      return NextResponse.json(
+        { success: false, error: 'Authentication is not configured (missing anon key).' },
+        { status: 500 },
+      );
+    }
+
     const authClient = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      anonKey,
       { auth: { persistSession: false, autoRefreshToken: false } }
     );
 

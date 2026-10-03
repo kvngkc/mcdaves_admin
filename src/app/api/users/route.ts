@@ -5,7 +5,7 @@ import crypto from 'crypto';
 
 export const dynamic = 'force-dynamic';
 
-// GET: List all users
+// GET: List console-relevant users (paginated)
 export async function GET(req: NextRequest) {
   const auth = await requireAdminSession(req);
   if (!auth.authorized) {
@@ -17,12 +17,32 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const { data: users, error } = await supabase.auth.admin.listUsers();
-    
+    // Step 5.7: `listUsers()` returned every account (including non-admins)
+    // unpaginated. Page it and keep only console-relevant accounts.
+    const url = new URL(req.url);
+    const page = Math.max(1, Number(url.searchParams.get('page') ?? '1') || 1);
+    const perPage = Math.min(100, Math.max(1, Number(url.searchParams.get('perPage') ?? '50') || 50));
+    const roleFilter = url.searchParams.get('role');
+
+    const { data, error } = await supabase.auth.admin.listUsers({ page, perPage });
+
     if (error) throw error;
 
-    // Filter out potential non-admin users if necessary, or just return them all
-    return NextResponse.json({ users: users.users });
+    const consoleRoles = ['admin', 'manager', 'staff'];
+    const users = (data.users ?? []).filter((u: any) => {
+      const role = u.app_metadata?.role;
+      if (!consoleRoles.includes(role)) return false;
+      if (roleFilter && role !== roleFilter) return false;
+      return true;
+    });
+
+    return NextResponse.json({
+      users,
+      page,
+      perPage,
+      total: data.total ?? users.length,
+      hasMore: users.length === perPage,
+    });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
@@ -57,15 +77,15 @@ export async function POST(req: NextRequest) {
       email,
       password: tempPassword,
       email_confirm: true,
-      user_metadata: {
-        role: role
-      }
+      // Step 2.2: the authoritative role lives in app_metadata.role — never
+      // user_metadata, which any signed-in user can overwrite.
+      app_metadata: { role },
     });
 
     if (error) throw error;
 
-    return NextResponse.json({ 
-      user: data.user, 
+    return NextResponse.json({
+      user: data.user,
       tempPassword,
       message: 'User created successfully. Provide the temporary password securely to the user.'
     });
