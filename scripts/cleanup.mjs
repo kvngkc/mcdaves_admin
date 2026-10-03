@@ -1,3 +1,7 @@
+// ⚠️  DESTRUCTIVE DEV SCRIPT — DO NOT RUN IN PRODUCTION.
+// Reads `.env.local` and deletes orphaned rows from the `vto_asset_calibrations`
+// table using the service-role key. Moved out of the repository root (step 5.5)
+// so it cannot be run by accident. Run explicitly: `node scripts/cleanup.mjs`.
 import { createClient } from '@supabase/supabase-js';
 import fs from 'fs';
 

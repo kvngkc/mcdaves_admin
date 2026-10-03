@@ -1,24 +1,30 @@
 // src/lib/supabase/service.ts
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { Product, ProductVariant } from '../commerce/types';
+import { resolveSupabaseKey } from './resolve-key';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-export const supabase: SupabaseClient | null = (() => {
-  if (!supabaseUrl) return null;
-  if (!process.env.SUPABASE_SERVICE_ROLE_KEY && process.env.NODE_ENV === 'production') {
-    console.error('[FATAL] SUPABASE_SERVICE_ROLE_KEY is missing in production! Admin API will fail.');
+/**
+ * Step 2.3: resolve the client through resolveSupabaseKey, which never degrades
+ * to the anon key in production. If the service-role key is missing in
+ * production we fail closed (no client => routes return 500) instead of quietly
+ * running the admin API with downgraded privileges.
+ */
+function createSupabaseServiceClient(): SupabaseClient | null {
+  try {
+    const { url, key } = resolveSupabaseKey();
+    return createClient(url, key, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+    });
+  } catch (err) {
+    console.error('[FATAL] Supabase client misconfigured:', (err as Error).message);
+    return null;
   }
-  return supabaseKey
-    ? createClient(supabaseUrl, supabaseKey, {
-        auth: {
-          persistSession: false,
-          autoRefreshToken: false,
-        },
-      })
-    : null;
-})();
+}
+
+export const supabase: SupabaseClient | null = createSupabaseServiceClient();
 
 function finitePositiveOrNull(value: unknown): number | null {
   const parsed = typeof value === 'number' ? value : Number(value);
