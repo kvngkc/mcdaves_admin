@@ -7,7 +7,7 @@ import { apiFetch } from '@/lib/api-client';
 interface TeamMember {
   id: string;
   email: string;
-  user_metadata: { role?: string };
+  app_metadata: { role?: string };
   last_sign_in_at?: string;
   created_at: string;
 }
@@ -155,7 +155,7 @@ export default function TeamPage() {
               </thead>
               <tbody className="divide-y divide-neutral-800">
                 {users.map((u) => {
-                  const role = u.user_metadata?.role || 'user';
+                  const role = u.app_metadata?.role || 'user';
                   return (
                     <tr key={u.id} className="hover:bg-neutral-800/20">
                       <td className="px-4 py-3 font-medium text-white">{u.email}</td>
